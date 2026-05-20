@@ -1,0 +1,7 @@
+{
+  "name": "shift-manager",
+  "private": true,
+  "scripts": {
+    "build": "node build.js"
+  }
+}
