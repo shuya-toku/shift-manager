@@ -1845,42 +1845,89 @@ function importSQAFormat(text) {
   const dim = daysInMonth(state.month);
   ensureMonthScaffolding();
 
-  // Find employee blocks: header rows are those where col0 looks like an ID (digits, 1-4 chars)
+  // Auto-detect the column where day-1 data starts (look for "1" in cols 3-6 of the header rows)
+  let dayColStart = 4;
+  outer: for (let r = 0; r < Math.min(5, rows.length); r++) {
+    for (let c = 3; c <= 6; c++) {
+      if ((rows[r][c] || '').trim() === '1') { dayColStart = c; break outer; }
+    }
+  }
+
+  // Find employee blocks: header rows are those where col0 looks like an ID (digits, 2-4 chars)
   let importedEmployees = 0;
   let updatedShifts = 0;
   let unknownStatuses = new Set();
   for (let i = 0; i < rows.length; i++) {
     const id = (rows[i][0] || '').trim();
     if (!/^\d{2,4}$/.test(id)) continue;
-    const header = rows[i] || [];
-    const inRow = rows[i + 1] || [];
-    const outRow = rows[i + 2] || [];
+    const header   = rows[i]     || [];
+    const inRow    = rows[i + 1] || [];
+    const outRow   = rows[i + 2] || [];
     const breakRow = rows[i + 3] || [];
     i += 3;
 
-    const nameRaw = (header[1] || '').trim();
+    // Col 1 = role/dept code, Col 2 = employee name (multi-line in quotes)
+    const roleRaw = (header[1] || '').trim().replace(/\t+/g, '/');
+    const nameRaw = (header[2] || header[1] || '').trim();
     const nameLines = nameRaw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
     const name = nameLines[0] || id;
     const notesFromName = nameLines.slice(1).join(' / ');
+
+    // Detect FT (values 1-2) vs PT (values > 2 = hours) from header row shift values
+    const shiftNums = [];
+    for (let d = 1; d <= dim; d++) {
+      const v = parseFloat((header[dayColStart + 3 * (d - 1)] || '').trim());
+      if (!isNaN(v) && v > 0) shiftNums.push(v);
+    }
+    const isHourBased = shiftNums.length > 0 && shiftNums.some(v => v > 2);
+
+    // Extract most-common IN / OUT / break from the actual timing rows
+    const inTimes = [], outTimes = [], brkMins = [];
+    for (let d = 1; d <= dim; d++) {
+      const col = dayColStart + 3 * (d - 1);
+      const inT = (inRow[col] || '').trim();
+      const outT = (outRow[col] || '').trim();
+      const brkV = (breakRow[col] || '').trim();
+      if (inT && /^\d+:\d+$/.test(inT)) inTimes.push(normalizeTime(inT));
+      if (outT && /^\d+:\d+$/.test(outT)) outTimes.push(normalizeTime(outT));
+      const bm = brkV.match(/^(\d+):(\d+)$/);
+      if (bm) brkMins.push(parseInt(bm[1], 10) * 60 + parseInt(bm[2], 10));
+    }
+    const modalVal = arr => arr.length
+      ? arr.sort((a, b) => arr.filter(v => v === b).length - arr.filter(v => v === a).length)[0]
+      : null;
+    const defStart = modalVal(inTimes)  || '07:00';
+    const defEnd   = modalVal(outTimes) || '16:00';
+    const defBreak = modalVal(brkMins)  ?? 60;
+
+    const totalHours = isHourBased ? Math.round(shiftNums.reduce((s, v) => s + v, 0)) : 0;
+
+    const { roles: csvRoles, nationality: csvNat } = parseSQACsvRole(roleRaw);
 
     let emp = state.employees.find(e => e.id === id);
     if (!emp) {
       emp = {
         id, name,
-        nationality: 'KH', employment: 'FT', roles: ['Op(JP/EN)'],
-        targetDays: 22, defaultStart: '07:00', defaultEnd: '16:00', defaultBreakMin: 60,
-        workableDow: [0,1,2,3,4,5,6], notes: notesFromName,
+        nationality: csvNat,
+        employment: isHourBased ? 'PT' : 'FT',
+        roles: csvRoles,
+        targetDays: isHourBased ? 0 : 22,
+        targetHours: isHourBased ? totalHours : 0,
+        defaultStart: defStart,
+        defaultEnd: defEnd,
+        defaultBreakMin: defBreak,
+        workableDow: [0,1,2,3,4,5,6],
+        notes: notesFromName,
       };
       state.employees.push(emp);
       importedEmployees++;
     } else {
-      // Only fill notes if empty
       if (!emp.notes && notesFromName) emp.notes = notesFromName;
     }
 
-    // Parse shift per day: cols 3, 6, 9, ... = day 1, 2, 3, ...
+    // Parse shift per day using detected column start
     for (let d = 1; d <= dim; d++) {
-      const col = 3 + 3 * (d - 1);
+      const col = dayColStart + 3 * (d - 1);
       const inT = (inRow[col] || '').trim();
       const outT = (outRow[col] || '').trim();
       const breakV = (breakRow[col] || '').trim();
@@ -1897,6 +1944,18 @@ function importSQAFormat(text) {
   }
   save(); renderAll();
   toast(`取り込み完了: 新規 ${importedEmployees} 名 / シフト ${updatedShifts} セル${unknownStatuses.size ? ` (未知ステータス: ${[...unknownStatuses].slice(0,5).join(', ')})` : ''}`, 'success');
+}
+
+function parseSQACsvRole(raw) {
+  const s = raw.replace(/[\s\t]+/g, '').toUpperCase();
+  if (s === 'MGR')                         return { roles: ['Mgr'],         nationality: 'JP' };
+  if (s === 'JP')                          return { roles: ['JP'],          nationality: 'JP' };
+  if (s === 'NIGHT')                       return { roles: ['Night'],       nationality: 'JP' };
+  if (s === 'JP/NIGHT' || s === 'NIGHT/JP') return { roles: ['JP','Night'], nationality: 'JP' };
+  if (s === 'OP(JP/EN)')                   return { roles: ['Op(JP/EN)'],   nationality: 'KH' };
+  if (s === 'OP(EN)')                      return { roles: ['Op(EN)'],      nationality: 'KH' };
+  if (s === 'DE')                          return { roles: ['DE'],          nationality: 'KH' };
+  return { roles: ['Op(JP/EN)'], nationality: 'KH' };
 }
 
 function parseShiftCellFromRaw(inT, outT, breakV, emp) {
