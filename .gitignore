@@ -1,0 +1,17 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.vscode/
+
+# Test/dev files
+test-shift.csv
+*.local.json
+
+# Optional: ignore Claude Code launch config if you don't want to share preview setup
+# .claude/
+
+# Build / dependency artifacts (just in case)
+node_modules/
+dist/
+build/

@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Shift Manager</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="firebase-config.js"></script>
+</head>
+<body>
+  <!-- Login overlay (shown when Firebase config exists and user not signed in) -->
+  <div id="login-overlay" class="login-overlay hidden">
+    <div class="login-box">
+      <h2>Shift Manager</h2>
+      <p class="hint">社内アカウントでログインしてください</p>
+      <button id="btn-google-signin" class="btn-primary">Googleでログイン</button>
+      <div id="login-error" class="login-error"></div>
+    </div>
+  </div>
+
+  <header class="topbar">
+    <div class="brand">Shift Manager</div>
+    <div id="user-info" class="user-info hidden">
+      <span id="user-name"></span>
+      <button id="btn-signout">ログアウト</button>
+    </div>
+    <div id="cloud-indicator" class="cloud-indicator hidden" title="リアルタイム同期中">☁️ クラウド</div>
+
+    <div class="month-picker">
+      <label>対象月</label>
+      <input type="month" id="month-input" />
+    </div>
+
+    <nav class="tabs">
+      <button class="tab" data-tab="dashboard">ダッシュボード</button>
+      <button class="tab" data-tab="employees">従業員</button>
+      <button class="tab" data-tab="holidays">祝日</button>
+      <button class="tab" data-tab="demand">必要人員</button>
+      <button class="tab" data-tab="shift">シフト表</button>
+      <button class="tab" data-tab="visualize">時間帯別人数</button>
+    </nav>
+
+    <div class="actions">
+      <button id="btn-auto-assign" class="btn-primary">自動アサイン</button>
+      <button id="btn-csv-import">CSV読込</button>
+      <button id="btn-csv-export">CSV出力</button>
+      <button id="btn-reset" class="btn-danger">リセット</button>
+      <input type="file" id="csv-file-input" accept=".csv" hidden />
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- Dashboard -->
+    <section class="view" data-view="dashboard">
+      <h2>ダッシュボード</h2>
+      <div class="dash-grid">
+        <div class="card">
+          <h3>従業員数</h3>
+          <div class="big-number" id="dash-emp-count">0</div>
+        </div>
+        <div class="card">
+          <h3>今月の総勤務日数</h3>
+          <div class="big-number" id="dash-total-days">0</div>
+        </div>
+        <div class="card">
+          <h3>未充足の枠</h3>
+          <div class="big-number" id="dash-unfilled">-</div>
+          <div class="small-note">必要人員に対して足りない時間帯×ロール</div>
+        </div>
+        <div class="card">
+          <h3>NG/AL 日</h3>
+          <div class="big-number" id="dash-ng-count">0</div>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom: 24px;">
+        <h3>不足理由レポート</h3>
+        <div id="gap-report"><p class="hint">自動アサインを実行すると、ここに「埋まらなかった枠」とその理由が一覧で出ます。</p></div>
+      </div>
+
+      <div class="help">
+        <h3>使い方</h3>
+        <ol>
+          <li>「従業員」タブで人を登録 (国籍/雇用形態/ロール/月勤務日数/デフォ勤務時間/NG条件)</li>
+          <li>「祝日」タブでカンボジア祝日を登録 (日曜+祝日はFTのみ2日カウント)</li>
+          <li>「必要人員」タブで各日の 5時間帯×ロール ごとの最低人数を入力</li>
+          <li>「自動アサイン」で下書き生成 → 「シフト表」で微調整</li>
+          <li>「時間帯別人数」で結果を確認</li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- Employees -->
+    <section class="view" data-view="employees">
+      <div class="view-header">
+        <h2>従業員マスター</h2>
+        <div class="header-controls">
+          <button id="btn-apply-target-days">今月の勤務日数を一括設定</button>
+          <button id="btn-add-employee" class="btn-primary">+ 追加</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table id="employees-table" class="data-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>名前</th>
+              <th>国籍</th>
+              <th>雇用</th>
+              <th>ロール</th>
+              <th>月勤務日数</th>
+              <th>デフォ勤務</th>
+              <th>休憩(分)</th>
+              <th>勤務可能曜日</th>
+              <th>備考</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Holidays -->
+    <section class="view" data-view="holidays">
+      <div class="view-header">
+        <h2>祝日マスター</h2>
+        <button id="btn-add-holiday" class="btn-primary">+ 追加</button>
+      </div>
+      <p class="hint">カンボジア祝日 (KH) と日本祝日 (JP) を登録。<b>KH祝日と日曜はフルタイム従業員のみ「2日カウント」</b>として扱います。</p>
+      <div class="table-wrap">
+        <table id="holidays-table" class="data-table">
+          <thead><tr><th>日付</th><th>国</th><th>名称</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Demand -->
+    <section class="view" data-view="demand">
+      <div class="view-header">
+        <h2>必要人員</h2>
+        <div class="header-controls">
+          <label><input type="checkbox" id="demand-compact-mode" checked /> コンパクト (0だけの行/帯を非表示)</label>
+          <button id="btn-demand-clear">クリア</button>
+          <button id="btn-demand-fill" class="btn-primary">一括入力 / テンプレ</button>
+        </div>
+      </div>
+      <p class="hint">時間帯: <b>04-07</b> / <b>07-12</b> / <b>12-16</b> / <b>16-21</b> / <b>21-02</b>。各帯ごとに5項目 (Mgr/JP/Night/Op合計/うちJP話者最低)。空欄=0。値があるセルは青色で強調。</p>
+      <div class="table-wrap" id="demand-table-wrap"></div>
+    </section>
+
+    <!-- Shift -->
+    <section class="view" data-view="shift">
+      <div class="view-header">
+        <h2>シフト表</h2>
+        <div class="legend">
+          <span class="legend-item"><span class="badge work">勤務</span></span>
+          <span class="legend-item"><span class="badge off">OFF</span></span>
+          <span class="legend-item"><span class="badge ng">NG</span></span>
+          <span class="legend-item"><span class="badge al">AL</span></span>
+          <span class="legend-item"><span class="badge p">P</span></span>
+        </div>
+      </div>
+      <div class="table-wrap" id="shift-table-wrap"></div>
+    </section>
+
+    <!-- Visualize -->
+    <section class="view" data-view="visualize">
+      <div class="view-header">
+        <h2>時間帯別 稼働人数</h2>
+        <div>
+          <label><input type="checkbox" id="vis-exclude-mgr" checked /> Mgr 除外</label>
+          <label><input type="radio" name="vis-mode" value="role" checked /> ロール別</label>
+          <label><input type="radio" name="vis-mode" value="nationality" /> 国籍別 (JP/KH)</label>
+        </div>
+      </div>
+      <div class="table-wrap" id="visualize-wrap"></div>
+    </section>
+  </main>
+
+  <!-- Modal -->
+  <div id="modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-body">
+      <div class="modal-header">
+        <h3 id="modal-title">Modal</h3>
+        <button id="modal-close">×</button>
+      </div>
+      <div id="modal-content"></div>
+      <div class="modal-footer">
+        <button id="modal-cancel">キャンセル</button>
+        <button id="modal-ok" class="btn-primary">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast-host"></div>
+
+  <!-- Firebase SDK (compat — loaded only if FIREBASE_CONFIG is set in firebase-config.js) -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
+  <script src="app.js"></script>
+  <script src="cloud.js"></script>
+</body>
+</html>
