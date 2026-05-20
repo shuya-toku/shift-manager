@@ -1922,7 +1922,14 @@ function importSQAFormat(text) {
       state.employees.push(emp);
       importedEmployees++;
     } else {
-      if (!emp.notes && notesFromName) emp.notes = notesFromName;
+      // Update role/nationality/employment from CSV (source of truth for these fields)
+      emp.roles       = csvRoles;
+      emp.nationality = csvNat;
+      emp.employment  = isHourBased ? 'PT' : 'FT';
+      if (defStart) emp.defaultStart    = defStart;
+      if (defEnd)   emp.defaultEnd      = defEnd;
+      if (defBreak) emp.defaultBreakMin = defBreak;
+      if (!emp.notes && notesFromName)  emp.notes = notesFromName;
     }
 
     // Parse shift per day using detected column start
