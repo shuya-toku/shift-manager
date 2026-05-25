@@ -1,9 +1,4 @@
 {
   "buildCommand": "node build.js",
-  "outputDirectory": "public",
-  "functions": {
-    "api/ai-query.js": {
-      "runtime": "nodejs20.x"
-    }
-  }
+  "outputDirectory": "public"
 }
