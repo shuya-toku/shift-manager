@@ -1119,7 +1119,7 @@ function renderVisualize() {
       r.className = rowCls;
       r.innerHTML = `<td class="date-cell">${day}(${DOW_LABELS[dow]})</td><td class="type-cell">${c}</td>` + hours.map(h => {
         const v = counts[date][h][c] || 0;
-        return `<td>${v || ''}</td>`;
+        return `<td class="clickable-count" data-date="${date}" data-hour="${h}" data-role="${c}" style="cursor:pointer">${v || ''}</td>`;
       }).join('');
       tbody.appendChild(r);
     }
@@ -1190,15 +1190,16 @@ function renderVisualize() {
   wrap.addEventListener('click', e => {
     const td = e.target.closest('.clickable-count');
     if (!td) return;
-    showHourDetail(td.dataset.date, parseInt(td.dataset.hour, 10));
+    showHourDetail(td.dataset.date, parseInt(td.dataset.hour, 10), td.dataset.role || null);
   });
 }
 
 // ---------- Hour detail panel ----------
-function showHourDetail(date, hour) {
+function showHourDetail(date, hour, filterRole) {
   const dow = getDow(date);
   const day = parseInt(date.slice(-2), 10);
-  const label = `${day}(${DOW_LABELS[dow]}) ${hour}:00`;
+  const roleLabel = filterRole ? ` [${filterRole}]` : '';
+  const label = `${day}(${DOW_LABELS[dow]}) ${hour}:00${roleLabel}`;
 
   // -- 勤務中の社員を収集 --
   const working = [];
@@ -1235,10 +1236,15 @@ function showHourDetail(date, hour) {
   const prev = addDays(date, -1);
   if (prev) collectWorking(prev);
 
+  // ロールフィルタ適用
+  const roleMatch = emp => !filterRole || (emp.roles || []).includes(filterRole);
+  const workingFiltered = working.filter(({ emp }) => roleMatch(emp));
+
   // -- OFFで調整可能な社員 --
   const available = [];
   for (const emp of state.employees) {
     if (seenWorking.has(emp.id)) continue;
+    if (!roleMatch(emp)) continue;
     if (!(emp.workableDow || []).includes(dow)) continue;
     const cell = state.shift[date]?.[emp.id];
     if (cell && cell.status === STATUS.NG) continue; // NGは除外
@@ -1263,9 +1269,9 @@ function showHourDetail(date, hour) {
       <button onclick="document.getElementById('hour-detail-panel').style.display='none'">✕</button>
     </div>
     <div class="hdp-section">
-      <div class="hdp-title">🟢 勤務中 (${working.length}人)</div>
-      ${working.length === 0 ? '<div class="hdp-empty">なし</div>' :
-        working.map(({emp, cell}) => `
+      <div class="hdp-title">🟢 勤務中 (${workingFiltered.length}人)</div>
+      ${workingFiltered.length === 0 ? '<div class="hdp-empty">なし</div>' :
+        workingFiltered.map(({emp, cell}) => `
           <div class="hdp-row">
             <span class="hdp-name">${emp.name}</span>
             ${rolesStr(emp)}
