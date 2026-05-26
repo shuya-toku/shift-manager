@@ -6,7 +6,7 @@
    =========================================================================== */
 
 // ---------- Constants ----------
-const ROLES = ['Mgr', 'JP', 'DE', 'Op(JP/EN)', 'Op(EN)', 'Night'];
+const ROLES = ['Mgr', 'JP', 'Op(JP/EN)', 'Op(EN)', 'Night', 'DE'];
 const ROLE_CLASS = {
   'Mgr': 'role-mgr',
   'JP': 'role-jp',
@@ -16,7 +16,7 @@ const ROLE_CLASS = {
   'Night': 'role-night',
 };
 // Lower number = higher priority. Used to fill rare roles first.
-const ROLE_PRIORITY = { 'Mgr': 1, 'Night': 2, 'JP': 3, 'DE': 4, 'Op(JP/EN)': 5, 'Op(EN)': 6 };
+const ROLE_PRIORITY = { 'Mgr': 1, 'Night': 2, 'JP': 3, 'Op(JP/EN)': 4, 'Op(EN)': 5, 'DE': 6 };
 
 // Demand keys (per-band): direct roles + Op aggregate
 // Mgr/JP/DE/Night: count by exact role match (DE is independent — NOT counted toward opTotal)
@@ -327,6 +327,7 @@ function bindGlobalEvents() {
 
   // Visualize controls
   document.getElementById('vis-exclude-mgr').addEventListener('change', renderVisualize);
+  document.getElementById('vis-exclude-de').addEventListener('change', renderVisualize);
   document.querySelectorAll('input[name="vis-mode"]').forEach(r => r.addEventListener('change', renderVisualize));
 
   // Modal global close
@@ -1038,6 +1039,7 @@ function renderVisualize() {
   if (!wrap) return;
   wrap.innerHTML = '';
   const excludeMgr = document.getElementById('vis-exclude-mgr')?.checked ?? true;
+  const excludeDE  = document.getElementById('vis-exclude-de')?.checked  ?? false;
   const mode = document.querySelector('input[name="vis-mode"]:checked')?.value || 'role';
 
   // Per-hour count: build 24-hour x date grid
@@ -1051,7 +1053,9 @@ function renderVisualize() {
   const counts = {};
   for (const d of dates) counts[d] = hours.map(() => ({}));
 
-  const cats = mode === 'role' ? ROLES : ['JP', 'KH'];
+  const cats = mode === 'role'
+    ? ROLES.filter(r => !(excludeMgr && r === 'Mgr') && !(excludeDE && r === 'DE'))
+    : ['JP', 'KH'];
 
   for (const date of dates) {
     const day = state.shift[date] || {};
@@ -1061,6 +1065,7 @@ function renderVisualize() {
       const emp = state.employees.find(e => e.id === empId);
       if (!emp) continue;
       if (excludeMgr && (emp.roles || []).includes('Mgr')) continue;
+      if (excludeDE  && (emp.roles || []).includes('DE'))  continue;
       const sH = parseInt(cell.start.split(':')[0], 10);
       const sM = parseInt(cell.start.split(':')[1], 10);
       const eH = parseInt(cell.end.split(':')[0], 10);
@@ -1083,9 +1088,13 @@ function renderVisualize() {
           if (!counts[targetDate][hh]['_unique']) counts[targetDate][hh]['_unique'] = new Set();
           counts[targetDate][hh]['_unique'].add(empId);
           if (mode === 'role') {
-            for (const r of (emp.roles || [])) {
-              counts[targetDate][hh][r] = (counts[targetDate][hh][r] || 0) + 1;
-            }
+            // 兼任の場合は ROLES の並び順で最上位ロールのみカウント
+            const primaryRole = (emp.roles || []).reduce((best, r) => {
+              const idx = ROLES.indexOf(r);
+              if (idx === -1) return best;
+              return (best === null || idx < ROLES.indexOf(best)) ? r : best;
+            }, null);
+            if (primaryRole) counts[targetDate][hh][primaryRole] = (counts[targetDate][hh][primaryRole] || 0) + 1;
           } else {
             const c = emp.nationality;
             counts[targetDate][hh][c] = (counts[targetDate][hh][c] || 0) + 1;
@@ -1146,7 +1155,7 @@ function renderVisualize() {
         { label: 'JP',        skip: false,
           getDemand: dB => dB.JP || 0,
           getHave: (h, dB) => counts[date][h]['JP'] || 0 },
-        { label: 'DE',        skip: false,
+        { label: 'DE',        skip: excludeDE,
           getDemand: dB => dB.DE || 0,
           getHave: (h, dB) => counts[date][h]['DE'] || 0 },
         { label: 'Op(JP/EN)', skip: false,
