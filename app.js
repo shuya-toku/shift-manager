@@ -1130,13 +1130,32 @@ function renderVisualize() {
 
     // Demand rows: one per role in role mode
     if (mode === 'role') {
+      // getHave(h, dB) — dBはその時間帯のdemandオブジェクト（残り枠計算に使用）
       const demandRowDefs = [
-        { label: 'Mgr',       skip: excludeMgr, getDemand: dB => dB.Mgr || 0,                                        getCount: h => counts[date][h]['Mgr'] || 0 },
-        { label: 'JP',        skip: false,       getDemand: dB => dB.JP || 0,                                         getCount: h => counts[date][h]['JP'] || 0 },
-        { label: 'DE',        skip: false,       getDemand: dB => dB.DE || 0,                                         getCount: h => counts[date][h]['DE'] || 0 },
-        { label: 'Op(JP/EN)', skip: false,       getDemand: dB => dB.opJPMin || 0,                                    getCount: h => counts[date][h]['Op(JP/EN)'] || 0 },
-        { label: 'Op(EN)',    skip: false,       getDemand: dB => Math.max(0, (dB.opTotal || 0) - (dB.opJPMin || 0)), getCount: h => counts[date][h]['Op(EN)'] || 0 },
-        { label: 'Night',     skip: false,       getDemand: dB => dB.Night || 0,                                      getCount: h => counts[date][h]['Night'] || 0 },
+        { label: 'Mgr',       skip: excludeMgr,
+          getDemand: dB => dB.Mgr || 0,
+          getHave: (h, dB) => counts[date][h]['Mgr'] || 0 },
+        { label: 'JP',        skip: false,
+          getDemand: dB => dB.JP || 0,
+          getHave: (h, dB) => counts[date][h]['JP'] || 0 },
+        { label: 'DE',        skip: false,
+          getDemand: dB => dB.DE || 0,
+          getHave: (h, dB) => counts[date][h]['DE'] || 0 },
+        { label: 'Op(JP/EN)', skip: false,
+          getDemand: dB => dB.opJPMin || 0,
+          getHave: (h, dB) => counts[date][h]['Op(JP/EN)'] || 0 },
+        // 残り枠 = opTotal - opJPMin。Op(JP/EN)の余剰分 + Op(EN) で充足可能
+        { label: 'Op(残り)',  skip: false,
+          getDemand: dB => Math.max(0, (dB.opTotal || 0) - (dB.opJPMin || 0)),
+          getHave: (h, dB) => {
+            const jpEnCount = counts[date][h]['Op(JP/EN)'] || 0;
+            const enCount   = counts[date][h]['Op(EN)'] || 0;
+            const jpMin     = dB ? (dB.opJPMin || 0) : 0;
+            return Math.max(0, jpEnCount - jpMin) + enCount;
+          } },
+        { label: 'Night',     skip: false,
+          getDemand: dB => dB.Night || 0,
+          getHave: (h, dB) => counts[date][h]['Night'] || 0 },
       ];
       for (const def of demandRowDefs) {
         if (def.skip) continue;
@@ -1144,13 +1163,14 @@ function renderVisualize() {
         demandRow.className = `demand-row ${rowCls}`;
         demandRow.innerHTML = `<td class="date-cell">${day}(${DOW_LABELS[dow]})</td><td class="type-cell">必要(${def.label})</td>` + hours.map(h => {
           let need = 0;
+          let curDB = null;
           for (const b of TIME_BANDS) {
             if (h >= b.startH && (b.endH > 24 ? (h < b.endH - 24 || h >= b.startH) : h < b.endH)) {
               const dB = state.demand[date]?.[b.id];
-              if (dB) need = def.getDemand(dB);
+              if (dB) { need = def.getDemand(dB); curDB = dB; }
             }
           }
-          const have = def.getCount(h);
+          const have = def.getHave(h, curDB);
           const gap = have < need ? 'gap-cell' : '';
           return `<td class="${gap}">${need || ''}</td>`;
         }).join('');
