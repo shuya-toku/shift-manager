@@ -1934,14 +1934,11 @@ function importSQAFormat(text) {
       state.employees.push(emp);
       importedEmployees++;
     } else {
-      // Update role/nationality/employment from CSV (source of truth for these fields)
-      emp.roles       = csvRoles;
-      emp.nationality = csvNat;
-      emp.employment  = isHourBased ? 'PT' : 'FT';
+      // 既存社員: ロール・国籍・雇用形態は変更しない（編集フォームで管理）
+      // シフトのデフォ勤務時間のみ更新
       if (defStart) emp.defaultStart    = defStart;
       if (defEnd)   emp.defaultEnd      = defEnd;
       if (defBreak) emp.defaultBreakMin = defBreak;
-      if (!emp.notes && notesFromName)  emp.notes = notesFromName;
     }
 
     // Parse shift per day using detected column start
