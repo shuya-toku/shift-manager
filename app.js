@@ -1074,13 +1074,16 @@ function renderVisualize() {
         const slot = h * 60 + 30;
         if (slot >= startMin && slot < endMin) {
           const hh = h % 24;
+          // h>=24 は翌日の時間帯 → 翌日の counts に格納
+          const targetDate = h < 24 ? date : addDays(date, 1);
+          if (!targetDate || !counts[targetDate]) continue;
           if (mode === 'role') {
             for (const r of (emp.roles || [])) {
-              counts[date][hh][r] = (counts[date][hh][r] || 0) + 1;
+              counts[targetDate][hh][r] = (counts[targetDate][hh][r] || 0) + 1;
             }
           } else {
             const c = emp.nationality;
-            counts[date][hh][c] = (counts[date][hh][c] || 0) + 1;
+            counts[targetDate][hh][c] = (counts[targetDate][hh][c] || 0) + 1;
           }
         }
       }
