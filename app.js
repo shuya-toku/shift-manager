@@ -1965,6 +1965,7 @@ function importSQAFormat(text) {
     }
 
     // Parse shift per day using detected column start
+    const isNightWorker = (emp.roles || []).includes('Night');
     for (let d = 1; d <= dim; d++) {
       const col = dayColStart + 3 * (d - 1);
       const inT = (inRow[col] || '').trim();
@@ -1972,7 +1973,13 @@ function importSQAFormat(text) {
       const breakV = (breakRow[col] || '').trim();
       const cell = parseShiftCellFromRaw(inT, outT, breakV, emp);
       if (cell) {
-        const date = dateKey(state.month, d);
+        const baseDate = dateKey(state.month, d);
+        // Night workers: CSVの日付列は「その夜が始まる日」を表す。
+        // INが12時前 かつ 日をまたがない（= 翌朝分のハーフシフト）→ 翌日として保存
+        const inHour = parseInt((cell.start || '12:00').split(':')[0], 10);
+        const outHour = parseInt((cell.end || '12:00').split(':')[0], 10);
+        const isEarlyMorningOnly = isNightWorker && inHour < 12 && outHour <= 12 && inHour <= outHour;
+        const date = isEarlyMorningOnly ? (addDays(baseDate, 1) || baseDate) : baseDate;
         if (!state.shift[date]) state.shift[date] = {};
         state.shift[date][id] = cell;
         updatedShifts++;
