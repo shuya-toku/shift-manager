@@ -1065,17 +1065,19 @@ function renderVisualize() {
       const sM = parseInt(cell.start.split(':')[1], 10);
       const eH = parseInt(cell.end.split(':')[0], 10);
       const eM = parseInt(cell.end.split(':')[1], 10);
-      // Determine which hours the employee covers (inclusive of start hour if minutes==0; otherwise from start hour onward — keep simple: hours where the employee is on shift for ≥30min)
-      // For simplicity: hour h is covered if start_min ≤ h*60+30 < end_min
       let startMin = sH * 60 + sM;
       let endMin = eH * 60 + eM;
       if (endMin <= startMin) endMin += 24 * 60;
+      // Night worker の朝シフト（INが12時前かつ日をまたがない）はカウント上は翌日扱い
+      const isNightEarlyMorning = (emp.roles || []).includes('Night')
+        && sH < 12 && eH <= 12 && eH >= sH && (endMin - startMin) <= 12 * 60;
+      const countBase = isNightEarlyMorning ? (addDays(date, 1) || date) : date;
       for (let h = 0; h < 48; h++) {
         const slot = h * 60 + 30;
         if (slot >= startMin && slot < endMin) {
           const hh = h % 24;
-          // h>=24 は翌日の時間帯 → 翌日の counts に格納
-          const targetDate = h < 24 ? date : addDays(date, 1);
+          // h>=24 は翌日の時間帯 → さらに翌日へ。h<24 は countBase
+          const targetDate = h < 24 ? countBase : addDays(countBase, 1);
           if (!targetDate || !counts[targetDate]) continue;
           if (mode === 'role') {
             for (const r of (emp.roles || [])) {
@@ -1965,7 +1967,6 @@ function importSQAFormat(text) {
     }
 
     // Parse shift per day using detected column start
-    const isNightWorker = (emp.roles || []).includes('Night');
     for (let d = 1; d <= dim; d++) {
       const col = dayColStart + 3 * (d - 1);
       const inT = (inRow[col] || '').trim();
@@ -1973,13 +1974,7 @@ function importSQAFormat(text) {
       const breakV = (breakRow[col] || '').trim();
       const cell = parseShiftCellFromRaw(inT, outT, breakV, emp);
       if (cell) {
-        const baseDate = dateKey(state.month, d);
-        // Night workers: CSVの日付列は「その夜が始まる日」を表す。
-        // INが12時前 かつ 日をまたがない（= 翌朝分のハーフシフト）→ 翌日として保存
-        const inHour = parseInt((cell.start || '12:00').split(':')[0], 10);
-        const outHour = parseInt((cell.end || '12:00').split(':')[0], 10);
-        const isEarlyMorningOnly = isNightWorker && inHour < 12 && outHour <= 12 && inHour <= outHour;
-        const date = isEarlyMorningOnly ? (addDays(baseDate, 1) || baseDate) : baseDate;
+        const date = dateKey(state.month, d);
         if (!state.shift[date]) state.shift[date] = {};
         state.shift[date][id] = cell;
         updatedShifts++;
