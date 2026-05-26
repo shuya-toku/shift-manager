@@ -272,7 +272,7 @@ input, select, textarea { font-family: inherit; font-size: 13px; }
 .heatmap tbody tr.sun td { background: #fff5f5; }
 .heatmap tbody tr.holiday td { background: #fff5f5; }
 .heatmap .date-cell { font-weight: 600; text-align: left; padding-left: 8px; position: sticky; left: 0; background: #f9fafb; z-index: 2; }
-.heatmap .type-cell { background: #f3f4f6; text-align: left; padding-left: 8px; position: sticky; left: 60px; z-index: 2; }
+.heatmap .type-cell { background: #f3f4f6; text-align: left; padding-left: 8px; position: sticky; left: 60px; z-index: 2; white-space: nowrap; min-width: 90px; }
 .heatmap .total-row { background: #dbeafe !important; font-weight: 600; }
 .heatmap .total-row td { background: #dbeafe !important; }
 .heatmap .demand-row { background: #fef3c7 !important; }

@@ -1128,24 +1128,34 @@ function renderVisualize() {
     }).join('');
     tbody.appendChild(totalRow);
 
-    // Demand row (sum: Mgr + JP + Night + opTotal in role mode)
+    // Demand rows: one per role in role mode
     if (mode === 'role') {
-      const demandRow = document.createElement('tr');
-      demandRow.className = `demand-row ${rowCls}`;
-      demandRow.innerHTML = `<td class="date-cell">${day}(${DOW_LABELS[dow]})</td><td class="type-cell">必要</td>` + hours.map(h => {
-        let need = 0;
-        for (const b of TIME_BANDS) {
-          if (h >= b.startH && (b.endH > 24 ? (h < b.endH - 24 || h >= b.startH) : h < b.endH)) {
-            const dB = state.demand[date]?.[b.id];
-            if (dB) need += (dB.Mgr || 0) + (dB.JP || 0) + (dB.DE || 0) + (dB.Night || 0) + (dB.opTotal || 0);
+      const demandRowDefs = [
+        { label: 'Mgr',       skip: excludeMgr, getDemand: dB => dB.Mgr || 0,                                        getCount: h => counts[date][h]['Mgr'] || 0 },
+        { label: 'JP',        skip: false,       getDemand: dB => dB.JP || 0,                                         getCount: h => counts[date][h]['JP'] || 0 },
+        { label: 'DE',        skip: false,       getDemand: dB => dB.DE || 0,                                         getCount: h => counts[date][h]['DE'] || 0 },
+        { label: 'Op(JP/EN)', skip: false,       getDemand: dB => dB.opJPMin || 0,                                    getCount: h => counts[date][h]['Op(JP/EN)'] || 0 },
+        { label: 'Op(EN)',    skip: false,       getDemand: dB => Math.max(0, (dB.opTotal || 0) - (dB.opJPMin || 0)), getCount: h => counts[date][h]['Op(EN)'] || 0 },
+        { label: 'Night',     skip: false,       getDemand: dB => dB.Night || 0,                                      getCount: h => counts[date][h]['Night'] || 0 },
+      ];
+      for (const def of demandRowDefs) {
+        if (def.skip) continue;
+        const demandRow = document.createElement('tr');
+        demandRow.className = `demand-row ${rowCls}`;
+        demandRow.innerHTML = `<td class="date-cell">${day}(${DOW_LABELS[dow]})</td><td class="type-cell">必要(${def.label})</td>` + hours.map(h => {
+          let need = 0;
+          for (const b of TIME_BANDS) {
+            if (h >= b.startH && (b.endH > 24 ? (h < b.endH - 24 || h >= b.startH) : h < b.endH)) {
+              const dB = state.demand[date]?.[b.id];
+              if (dB) need = def.getDemand(dB);
+            }
           }
-        }
-        let sum = 0;
-        for (const c of cats) sum += counts[date][h][c] || 0;
-        const gap = sum < need ? 'gap-cell' : '';
-        return `<td class="${gap}">${need ? need : ''}</td>`;
-      }).join('');
-      tbody.appendChild(demandRow);
+          const have = def.getCount(h);
+          const gap = have < need ? 'gap-cell' : '';
+          return `<td class="${gap}">${need || ''}</td>`;
+        }).join('');
+        tbody.appendChild(demandRow);
+      }
     }
   }
   table.appendChild(tbody);
