@@ -278,6 +278,20 @@ input, select, textarea { font-family: inherit; font-size: 13px; }
 .heatmap .demand-row { background: #fef3c7 !important; }
 .heatmap .demand-row td { background: #fef3c7 !important; }
 .heatmap .gap-cell { background: #fecaca !important; color: var(--danger); font-weight: 700; }
+.heatmap .clickable-count:hover { background: #bfdbfe !important; cursor: pointer; }
+
+/* Hour detail panel */
+#hour-detail-panel { display:none; position:fixed; top:60px; right:16px; width:320px; max-height:80vh; overflow-y:auto; background:#fff; border:1px solid #e5e7eb; border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,.15); z-index:1000; font-size:13px; }
+.hdp-header { display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:#1e293b; color:#fff; border-radius:10px 10px 0 0; font-weight:600; }
+.hdp-header button { background:none; border:none; color:#fff; font-size:16px; cursor:pointer; line-height:1; }
+.hdp-section { padding:10px 14px; border-bottom:1px solid #f1f5f9; }
+.hdp-title { font-weight:700; margin-bottom:6px; color:#374151; }
+.hdp-empty { color:#9ca3af; font-size:12px; }
+.hdp-row { display:flex; align-items:center; gap:6px; padding:4px 0; border-bottom:1px solid #f8fafc; flex-wrap:wrap; }
+.hdp-name { font-weight:600; min-width:110px; color:#1e293b; }
+.hdp-time { margin-left:auto; color:#64748b; font-size:11px; white-space:nowrap; }
+.hdp-status { margin-left:auto; color:#f59e0b; font-size:11px; font-weight:600; }
+.role-tag { font-size:10px; padding:1px 5px; border-radius:4px; background:#e0f2fe; color:#0369a1; }
 
 /* Forms (modal) */
 .form-row { display: flex; gap: 12px; margin-bottom: 8px; align-items: center; }

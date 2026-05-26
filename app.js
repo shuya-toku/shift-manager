@@ -1123,13 +1123,13 @@ function renderVisualize() {
       }).join('');
       tbody.appendChild(r);
     }
-    // Total row
+    // Total row (clickable cells → staffing detail panel)
     const totalRow = document.createElement('tr');
     totalRow.className = `total-row ${rowCls}`;
     totalRow.innerHTML = `<td class="date-cell">${day}(${DOW_LABELS[dow]})</td><td class="type-cell">合計</td>` + hours.map(h => {
       let sum = 0;
       for (const c of cats) sum += counts[date][h][c] || 0;
-      return `<td>${sum || ''}</td>`;
+      return `<td class="clickable-count" data-date="${date}" data-hour="${h}" style="cursor:pointer">${sum || ''}</td>`;
     }).join('');
     tbody.appendChild(totalRow);
 
@@ -1185,6 +1185,104 @@ function renderVisualize() {
   }
   table.appendChild(tbody);
   wrap.appendChild(table);
+
+  // Clickable count cells → staffing detail panel
+  wrap.addEventListener('click', e => {
+    const td = e.target.closest('.clickable-count');
+    if (!td) return;
+    showHourDetail(td.dataset.date, parseInt(td.dataset.hour, 10));
+  });
+}
+
+// ---------- Hour detail panel ----------
+function showHourDetail(date, hour) {
+  const dow = getDow(date);
+  const day = parseInt(date.slice(-2), 10);
+  const label = `${day}(${DOW_LABELS[dow]}) ${hour}:00`;
+
+  // -- 勤務中の社員を収集 --
+  const working = [];
+  const seenWorking = new Set();
+
+  function collectWorking(shiftDate) {
+    const dayShifts = state.shift[shiftDate] || {};
+    for (const empId of Object.keys(dayShifts)) {
+      if (seenWorking.has(empId)) continue;
+      const cell = dayShifts[empId];
+      if (cell.status !== STATUS.WORK) continue;
+      const emp = state.employees.find(e => e.id === empId);
+      if (!emp) continue;
+      const sH = parseInt(cell.start.split(':')[0], 10);
+      const sM = parseInt(cell.start.split(':')[1], 10);
+      const eH = parseInt(cell.end.split(':')[0], 10);
+      const eM = parseInt(cell.end.split(':')[1], 10);
+      let startMin = sH * 60 + sM;
+      let endMin = eH * 60 + eM;
+      if (endMin <= startMin) endMin += 24 * 60;
+      // Night worker early morning: stored on shiftDate, counts as shiftDate+1
+      const isNightMorning = (emp.roles || []).includes('Night')
+        && sH < 12 && eH <= 12 && sH <= eH && (endMin - startMin) <= 12 * 60;
+      const effectiveDate = isNightMorning ? (addDays(shiftDate, 1) || shiftDate) : shiftDate;
+      if (effectiveDate !== date) continue;
+      const slotMin = hour * 60 + 30;
+      const covers = endMin <= 24 * 60
+        ? (slotMin >= startMin && slotMin < endMin)
+        : (shiftDate === date ? slotMin >= startMin : slotMin < endMin - 24 * 60);
+      if (covers) { working.push({ emp, cell }); seenWorking.add(empId); }
+    }
+  }
+  collectWorking(date);
+  const prev = addDays(date, -1);
+  if (prev) collectWorking(prev);
+
+  // -- OFFで調整可能な社員 --
+  const available = [];
+  for (const emp of state.employees) {
+    if (seenWorking.has(emp.id)) continue;
+    if (!(emp.workableDow || []).includes(dow)) continue;
+    const cell = state.shift[date]?.[emp.id];
+    if (cell && cell.status === STATUS.NG) continue; // NGは除外
+    const status = cell?.status || 'none';
+    if (status !== STATUS.WORK) available.push({ emp, status });
+  }
+
+  // -- パネル描画 --
+  let panel = document.getElementById('hour-detail-panel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'hour-detail-panel';
+    document.body.appendChild(panel);
+  }
+
+  const roleTag = r => `<span class="role-tag role-${r.toLowerCase().replace(/[^a-z]/g,'')}">${r}</span>`;
+  const rolesStr = emp => (emp.roles || []).map(roleTag).join('');
+
+  panel.innerHTML = `
+    <div class="hdp-header">
+      <span>📋 ${label}</span>
+      <button onclick="document.getElementById('hour-detail-panel').style.display='none'">✕</button>
+    </div>
+    <div class="hdp-section">
+      <div class="hdp-title">🟢 勤務中 (${working.length}人)</div>
+      ${working.length === 0 ? '<div class="hdp-empty">なし</div>' :
+        working.map(({emp, cell}) => `
+          <div class="hdp-row">
+            <span class="hdp-name">${emp.name}</span>
+            ${rolesStr(emp)}
+            <span class="hdp-time">${cell.start}–${cell.end}</span>
+          </div>`).join('')}
+    </div>
+    <div class="hdp-section">
+      <div class="hdp-title">🟡 OFF・調整可能 (${available.length}人)</div>
+      ${available.length === 0 ? '<div class="hdp-empty">なし</div>' :
+        available.map(({emp, status}) => `
+          <div class="hdp-row">
+            <span class="hdp-name">${emp.name}</span>
+            ${rolesStr(emp)}
+            <span class="hdp-status">${status === 'none' ? '未設定' : status.toUpperCase()}</span>
+          </div>`).join('')}
+    </div>`;
+  panel.style.display = 'block';
 }
 
 // ---------- Coverage vs Demand ----------
