@@ -1079,6 +1079,9 @@ function renderVisualize() {
           // h>=24 は翌日の時間帯 → さらに翌日へ。h<24 は countBase
           const targetDate = h < 24 ? countBase : addDays(countBase, 1);
           if (!targetDate || !counts[targetDate]) continue;
+          // 実人数カウント（兼任でも1人として）
+          if (!counts[targetDate][hh]['_unique']) counts[targetDate][hh]['_unique'] = new Set();
+          counts[targetDate][hh]['_unique'].add(empId);
           if (mode === 'role') {
             for (const r of (emp.roles || [])) {
               counts[targetDate][hh][r] = (counts[targetDate][hh][r] || 0) + 1;
@@ -1127,8 +1130,8 @@ function renderVisualize() {
     const totalRow = document.createElement('tr');
     totalRow.className = `total-row ${rowCls}`;
     totalRow.innerHTML = `<td class="date-cell">${day}(${DOW_LABELS[dow]})</td><td class="type-cell">合計</td>` + hours.map(h => {
-      let sum = 0;
-      for (const c of cats) sum += counts[date][h][c] || 0;
+      // 兼任ロールで重複しないよう実人数（ユニーク）で表示
+      const sum = counts[date][h]['_unique']?.size || 0;
       return `<td class="clickable-count" data-date="${date}" data-hour="${h}" style="cursor:pointer">${sum || ''}</td>`;
     }).join('');
     tbody.appendChild(totalRow);
