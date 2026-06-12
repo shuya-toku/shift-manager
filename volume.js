@@ -255,8 +255,15 @@
       + (incompleteCount ? ` ／ <span style="color:#b8860b">部分データ ${incompleteCount}日を除外（AI Call以外が未取込）</span>` : '')
       + (anyStaff ? '' : ' ／ <span style="color:#c0392b">この月のシフトが未取込です（CSV読込で在席人数が入ります）</span>');
 
+    // クリック→理由パネル用コンテキストを保存
+    ctx = { grid, gran, slots, excluded };
+
     // 日別ヒートマップ
     wrap.appendChild(buildDailyTable(dates, slots, grid, metric, gran));
+    wrap.onclick = (e) => {
+      const td = e.target.closest('.sf-clickable');
+      if (td) openDetail(td.dataset.date, td.dataset.slot);
+    };
     // 曜日別平均
     dowWrap.appendChild(buildDowTable(dates, slots, grid, completeSet, metric, gran));
     // サマリー
@@ -284,7 +291,8 @@
       const tds = slots.map(s => {
         const cell = grid[date][s.id];
         const mark = cell.staffedMissed ? '<span class="sf-dot">●</span>' : (cell.incomplete ? '<span class="sf-partial">部</span>' : '');
-        return `<td class="sf-cell" style="${cellStyle(metric, cell)}" title="${escapeHtml(cellTitle(cell))}">${cellText(metric, cell, false)}${mark}</td>`;
+        const clk = (cell.missed > 0 && !cell.incomplete) ? ' sf-clickable' : '';
+        return `<td class="sf-cell${clk}" data-date="${date}" data-slot="${s.id}" style="${cellStyle(metric, cell)}" title="${escapeHtml(cellTitle(cell))}">${cellText(metric, cell, false)}${mark}</td>`;
       }).join('');
       const r = document.createElement('tr');
       r.className = rowCls;
@@ -386,6 +394,81 @@
         </table>
         </div>
       </div>`;
+  }
+
+  // ---- クリック→取りこぼし理由パネル ----
+  let ctx = null;
+  const BAND_HOURS = { '04-07': [4, 5, 6], '07-12': [7, 8, 9, 10, 11], '12-16': [12, 13, 14, 15], '16-21': [16, 17, 18, 19, 20], '21-02': [21, 22, 23, 0, 1, 2, 3] };
+  const SRC_LABEL = { 'SBCalls': 'ビデオ通話', 'AI Call': 'AI電話(転送/不在)', 'CallConnect': '電話(CallConnect)', 'IVRy': '電話(IVRy)', 'freshdesk': 'メール' };
+
+  async function fetchMissedDetail(date, hours) {
+    const url = `${KPI_URL}/rest/v1/v_staffing_missed_detail`
+      + `?select=source,channel,property,missed&contact_date=eq.${date}&contact_hour=in.(${hours.join(',')})`;
+    const res = await fetch(url, { headers: { apikey: KPI_KEY, Authorization: `Bearer ${KPI_KEY}`, Accept: 'application/json' } });
+    if (!res.ok) throw new Error(`Supabase ${res.status}`);
+    return res.json();
+  }
+
+  function panelEl() {
+    let p = document.getElementById('sf-detail-panel');
+    if (!p) { p = document.createElement('div'); p.id = 'sf-detail-panel'; document.body.appendChild(p); }
+    return p;
+  }
+
+  async function openDetail(date, slotId) {
+    if (!ctx) return;
+    const slot = ctx.slots.find(s => s.id === slotId);
+    if (!slot) return;
+    const cell = ctx.grid[date]?.[slotId];
+    const hours = ctx.gran === 'hour' ? [+slotId] : (BAND_HOURS[slotId] || []);
+    const slotLabel = ctx.gran === 'hour' ? `${slotId}時台` : `${slot.label} 帯`;
+    const A0 = A();
+    const dow = A0.DOW_LABELS[A0.getDow(date)];
+    const day = parseInt(date.slice(-2), 10);
+
+    const p = panelEl();
+    p.innerHTML = `<div class="sfd-head"><span>📍 ${day}日(${dow}) ${slotLabel}</span><button id="sfd-x">✕</button></div><div class="sfd-body">読込中…</div>`;
+    p.style.display = 'block';
+    document.getElementById('sfd-x').onclick = () => { p.style.display = 'none'; };
+
+    let rows = [];
+    try { rows = await fetchMissedDetail(date, hours); } catch (e) { p.querySelector('.sfd-body').innerHTML = `<div style="color:#c0392b">取得失敗</div>`; return; }
+
+    // 集計
+    const totMiss = rows.reduce((a, r) => a + (+r.missed), 0);
+    const bySrc = {}, byFac = {};
+    for (const r of rows) {
+      bySrc[r.source] = (bySrc[r.source] || 0) + (+r.missed);
+      byFac[r.property] = (byFac[r.property] || 0) + (+r.missed);
+    }
+    const srcRows = Object.entries(bySrc).sort((a, b) => b[1] - a[1]);
+    const facRows = Object.entries(byFac).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+    // 在席者
+    const emps = (ctx.gran === 'hour' ? A0.staffedEmployeesAtHour(date, +slotId) : A0.staffedEmployeesInBand(date, slot.band))
+      .filter(e => { const r = e.roles || []; return !r.length || !r.every(x => ctx.excluded.has(x)); });
+    const staffed = cell?.staffed ?? emps.length;
+    const demand = cell?.demand ?? 0;
+    const pp = staffed > 0 ? demand / staffed : null;
+    const videoMiss = bySrc['SBCalls'] || 0;
+
+    // 推定理由（ヒューリスティック）
+    const reasons = [];
+    if (staffed <= 0) reasons.push('🔴 <b>無人時間</b>：この時間に在席なし（シフト外）。');
+    else {
+      if (pp != null && pp >= 3) reasons.push(`🔴 <b>過負荷</b>：在席${staffed}人に対しライブ要対応${demand}件（1人あたり ${pp.toFixed(1)}件）。`);
+      if (videoMiss / (totMiss || 1) >= 0.6) reasons.push(`🟠 <b>ビデオ併発</b>：取りこぼしの${Math.round(videoMiss / totMiss * 100)}%がビデオ通話。同時着信に在席が追いつかず。`);
+      if (facRows.length && facRows[0][1] / (totMiss || 1) >= 0.4) reasons.push(`🟠 <b>特定施設に集中</b>：「${facRows[0][0]}」が${facRows[0][1]}件（${Math.round(facRows[0][1] / totMiss * 100)}%）。`);
+      if (!reasons.length) reasons.push('🟡 在席はあるが取りこぼし発生。負荷の瞬間的な集中や対応長期化の可能性。');
+    }
+
+    const fmtList = (arr, lbl) => arr.map(([k, v]) => `<div class="sfd-row"><span>${lbl(k)}</span><b>${v}件</b></div>`).join('') || '<div class="sfd-empty">なし</div>';
+    p.querySelector('.sfd-body').innerHTML = `
+      <div class="sfd-kpi"><div>取りこぼし <b>${totMiss}</b>件</div><div>ライブ要対応 <b>${demand}</b>件</div><div>在席 <b>${staffed}</b>人${pp != null ? ` / 1人${pp.toFixed(1)}件` : ''}</div></div>
+      <div class="sfd-sec"><div class="sfd-t">推定理由</div>${reasons.map(r => `<div class="sfd-reason">${r}</div>`).join('')}</div>
+      <div class="sfd-sec"><div class="sfd-t">チャネル別</div>${fmtList(srcRows, k => SRC_LABEL[k] || k)}</div>
+      <div class="sfd-sec"><div class="sfd-t">施設別 (上位5)</div>${fmtList(facRows, k => k)}</div>
+      <div class="sfd-sec"><div class="sfd-t">この時間の在席者 (${emps.length}人)</div>${emps.length ? emps.map(e => `<div class="sfd-row"><span>${e.name}</span><span class="sfd-roles">${(e.roles || []).join(',')}</span></div>`).join('') : '<div class="sfd-empty">なし</div>'}</div>`;
   }
 
   // ---- イベント ----
