@@ -293,6 +293,8 @@ function bindGlobalEvents() {
     const at = document.querySelector('.tab.active')?.dataset.tab;
     if (at === 'staffing-fit' && window.StaffingFit) window.StaffingFit.render();
     else if (at && at.indexOf('inquiry-') === 0 && window.InquiryAnalysis) window.InquiryAnalysis.render(at);
+    // 文脈バー(状態チップ)も選択月に合わせて更新
+    if (window.SQAContext) window.SQAContext.refresh(at);
   });
 
   // Top actions
@@ -349,6 +351,8 @@ function switchTab(tab) {
   if (tab && tab.indexOf('inquiry-') === 0 && window.InquiryAnalysis) window.InquiryAnalysis.render(tab);
   // ナビ後処理(アクション表示の文脈切替など)
   if (window.SQANav && window.SQANav.onTab) window.SQANav.onTab(tab);
+  // 文脈バー(状態チップ)を更新
+  if (window.SQAContext) window.SQAContext.refresh(tab);
 }
 
 function ensureMonthScaffolding() {
@@ -2286,15 +2290,23 @@ function escapeAttr(s) { return escapeHtml(s); }
 
 // ---------- Bridge for cloud.js integration ----------
 // Expose state + key functions so cloud.js (regular script) can interact.
+// 指定月にworkセル(取込済みシフト)があるか。文脈バー/空状態の判定に使う。
+function hasShiftData(month) {
+  month = month || state.month;
+  return Object.keys(state.shift || {}).some(d =>
+    d.slice(0, 7) === month &&
+    Object.values(state.shift[d] || {}).some(c => c && c.status === STATUS.WORK));
+}
+
 window.ShiftApp = {
   get state() { return state; },
   set state(v) { Object.assign(state, v); },
   save, load, renderAll, init,
-  // Read-only helpers/constants exposed for volume.js (人員整合性タブ)
+  // Read-only helpers/constants exposed for volume.js (人員整合性タブ) / context-bar.js
   TIME_BANDS, ROLES,
   monthDates, getDow, DOW_LABELS,
   isKHHoliday, isJPHoliday,
-  staffedEmployeesInBand, staffedEmployeesAtHour,
+  staffedEmployeesInBand, staffedEmployeesAtHour, hasShiftData,
   // Override hooks: cloud.js can set these to take over persistence
   saveOverride: null,
   loadOverride: null,

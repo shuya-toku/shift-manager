@@ -41,6 +41,13 @@
     </div>
   </header>
 
+  <div id="context-bar" class="context-bar">
+    <span class="ctx-chip ctx-month">📅 対象月 <b id="ctx-month">—</b></span>
+    <span class="ctx-chip muted" id="ctx-inquiry" title="お問い合わせ実績=Supabase(全月)。電話/メール/ビデオは月次手動取込のため当月〜月末は未取込になりがち。AI電話だけ先に入ります。">💬 お問い合わせ <span class="ctx-val">…</span></span>
+    <span class="ctx-chip muted" id="ctx-shift" title="シフト=この月に取込したローカルCSV（今後Supabase永続化予定）。">🗓 シフト <span class="ctx-val">…</span></span>
+    <span class="ctx-note" id="ctx-note"></span>
+  </div>
+
   <div class="layout">
     <aside class="sidebar">
       <button class="tab nav-item" data-tab="dashboard">📊 ダッシュボード</button>
@@ -309,11 +316,13 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 
   <script src="sqa-data.js"></script>
+  <script src="sqa-glossary.js"></script>
   <script src="app.js"></script>
   <script src="cloud.js"></script>
   <script src="history.js"></script>
   <script src="volume.js"></script>
   <script src="inquiry.js"></script>
   <script src="nav.js"></script>
+  <script src="context-bar.js"></script>
 </body>
 </html>

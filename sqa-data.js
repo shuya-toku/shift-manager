@@ -60,6 +60,33 @@
     return f.filter(r => LAGGING.includes(r.source)).some(r => !r.latest || r.latest < end);
   }
 
+  // 月のお問い合わせ可用性（コンテキストバーの説明文専用。本体の空判定には使わない＝実データ結果で判定）。
+  // coverDay = 全チャネルが揃う境界日（最も遅れている遅れチャネルの月内到達日）。
+  // leadDay  = 先行チャネル(AI電話等)が到達している日。coverDay<leadDay なら「揃いは〜coverDay日／以降は先行のみ」。
+  async function monthAvailability(month) {
+    const f = await freshness();
+    const { start, end } = monthRange(month);
+    const clamp = d => (d > end ? end : d);
+    const day = d => (d ? parseInt(d.slice(8, 10), 10) : 0);
+    const lag = f.filter(r => LAGGING.includes(r.source));        // 遅れチャネル
+    const lagInMonth = lag.filter(r => r.latest && r.latest >= start);
+    const allLagInMonth = lag.length > 0 && lag.every(r => r.latest && r.latest >= start);
+    const lead = f.find(r => r.source === 'AI Call');            // 先行チャネル
+    const leadInMonth = !!(lead && lead.latest && lead.latest >= start);
+    const hasAny = lagInMonth.length > 0 || leadInMonth;
+    const complete = lag.length > 0 && lag.every(r => r.latest && r.latest >= end);
+    // coverDay = 全チャネルが揃う境界日（遅れチャネルが1つでも月内に無ければ0）
+    const coverLatest = allLagInMonth ? lag.map(r => clamp(r.latest)).sort()[0] : null;
+    // leadDay = 先行(AI電話)の到達日。無ければ遅れチャネル最遅で代替
+    const leadLatest = leadInMonth ? clamp(lead.latest)
+      : (lagInMonth.length ? lagInMonth.map(r => clamp(r.latest)).sort().slice(-1)[0] : null);
+    return {
+      inquiry: hasAny ? (complete ? 'complete' : 'partial') : 'none',
+      coverDay: day(coverLatest),   // 0 = 揃い無し（AI電話のみ等）
+      leadDay: day(leadLatest),
+    };
+  }
+
   function monthRange(month) {
     const [y, m] = month.split('-').map(Number);
     const dim = new Date(y, m, 0).getDate();
@@ -73,7 +100,7 @@
 
   window.SQAData = {
     KPI_URL, KPI_KEY, LAGGING, SRC_LABEL,
-    fetchView, freshness, defaultMonth, freshnessText, isPartialMonth,
+    fetchView, freshness, defaultMonth, freshnessText, isPartialMonth, monthAvailability,
     monthRange, prevMonth,
   };
 })();
