@@ -454,3 +454,4 @@ input, select, textarea { font-family: inherit; font-size: 13px; }
   .sidebar { width: 100%; flex-basis: auto; display: flex; flex-wrap: wrap; gap: 4px; }
   .sidebar .nav-item { width: auto; }
 }
+.sf-mini-miss { color: var(--danger, #c0392b); font-size: 10px; margin-left: 3px; vertical-align: middle; }

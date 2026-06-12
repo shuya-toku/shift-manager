@@ -337,7 +337,11 @@
         };
         const title = `平均 在席${cell.staffed.toFixed(1)}人 / 総${cell.total.toFixed(1)} / 要対応${cell.demand.toFixed(1)} / Missed${cell.missed.toFixed(1)}/日 (${(cell.missedRate*100).toFixed(1)}%)\n有人Missed ${a.smiss}/${a.n}日`;
         const dotted = a.smiss >= Math.ceil(a.n / 2) ? '<span class="sf-dot">●</span>' : '';
-        return `<td class="sf-cell" style="${cellStyle(metric, cell)}" title="${escapeHtml(title)}">${cellText(metric, cell, true)}${dotted}</td>`;
+        // 平均Missed/日を常時表示（Missed系メトリクス選択時は重複するため出さない）
+        const avgMiss = a.n ? a.missed / a.n : 0;
+        const missTag = (metric !== 'missed' && metric !== 'missedRate' && avgMiss >= 0.5)
+          ? `<span class="sf-mini-miss" title="平均Missed/日">✗${avgMiss.toFixed(1)}</span>` : '';
+        return `<td class="sf-cell" style="${cellStyle(metric, cell)}" title="${escapeHtml(title)}">${cellText(metric, cell, true)}${dotted}${missTag}</td>`;
       }).join('');
       const r = document.createElement('tr');
       r.className = rowCls;
