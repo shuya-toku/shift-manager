@@ -6,7 +6,7 @@ const OUT = 'public';
 if (!fs.existsSync(OUT)) fs.mkdirSync(OUT);
 
 const files = [
-  'index.html', 'app.js', 'cloud.js', 'history.js',
+  'index.html', 'app.js', 'cloud.js', 'history.js', 'volume.js',
   'styles.css', 'firebase-config.js', 'supabase-config.js',
 ];
 
