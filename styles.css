@@ -425,3 +425,32 @@ input, select, textarea { font-family: inherit; font-size: 13px; }
 .sfd-row { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px dashed #eef1f4; }
 .sfd-roles { color: #8a94a0; font-size: 11px; }
 .sfd-empty { color: #aab2bd; }
+
+/* ====== SQA Operation Review Analytics: サイドバーレイアウト ====== */
+.layout { display: flex; align-items: stretch; min-height: calc(100vh - 56px); }
+.sidebar { width: 212px; flex: 0 0 212px; background: #f7f9fb; border-right: 1px solid var(--border, #e2e8f0); padding: 10px 8px; overflow-y: auto; }
+#main { flex: 1; min-width: 0; padding: 18px 22px; }
+.freshness-badge { font-size: 11px; color: #5b6b7b; background: #eef2f6; border-radius: 6px; padding: 3px 8px; white-space: nowrap; }
+
+/* サイドバー項目（既存 .tab を上書き：縦並びブロックに） */
+.sidebar .nav-item { display: block; width: 100%; text-align: left; background: transparent; border: none; border-radius: 7px;
+  padding: 8px 12px; margin: 1px 0; font-size: 13.5px; color: var(--text, #1f2933); cursor: pointer; }
+.sidebar .nav-item:hover { background: #e8eef4; }
+.sidebar .nav-item.active { background: var(--accent, #2563eb); color: #fff; font-weight: 600; }
+.sidebar .nav-item.sub { padding-left: 22px; font-size: 13px; color: #475569; }
+.nav-group { margin: 8px 0 4px; }
+.nav-group-head { font-size: 11px; font-weight: 700; color: #64748b; letter-spacing: .03em; padding: 6px 10px 2px; cursor: pointer; user-select: none; }
+.nav-group-head::before { content: "▾ "; font-size: 10px; }
+.nav-group.collapsed .nav-group-head::before { content: "▸ "; }
+.nav-group.collapsed .nav-item.sub { display: none; }
+
+/* お問い合わせ概況の前月比デルタ */
+.iq-delta { display: inline-block; font-size: 11px; margin-top: 4px; }
+.iq-delta.up { color: #c0392b; }
+.iq-delta.dn { color: #2980b9; }
+
+@media (max-width: 760px) {
+  .layout { flex-direction: column; }
+  .sidebar { width: 100%; flex-basis: auto; display: flex; flex-wrap: wrap; gap: 4px; }
+  .sidebar .nav-item { width: auto; }
+}

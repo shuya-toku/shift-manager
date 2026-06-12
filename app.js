@@ -341,6 +341,10 @@ function switchTab(tab) {
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.dataset.view === tab));
   // 人員整合性タブはSupabaseから非同期で読むため、表示時に遅延レンダリング
   if (tab === 'staffing-fit' && window.StaffingFit) window.StaffingFit.render();
+  // お問い合わせ分析タブ(Supabase直読み)も表示時に遅延レンダリング
+  if (tab && tab.indexOf('inquiry-') === 0 && window.InquiryAnalysis) window.InquiryAnalysis.render(tab);
+  // ナビ後処理(アクション表示の文脈切替など)
+  if (window.SQANav && window.SQANav.onTab) window.SQANav.onTab(tab);
 }
 
 function ensureMonthScaffolding() {

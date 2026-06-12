@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Shift Manager</title>
+  <title>SQA Operation Review Analytics</title>
   <link rel="stylesheet" href="styles.css" />
   <script src="firebase-config.js"></script>
   <script src="supabase-config.js"></script>
@@ -12,7 +12,7 @@
   <!-- Login overlay (shown when Firebase config exists and user not signed in) -->
   <div id="login-overlay" class="login-overlay hidden">
     <div class="login-box">
-      <h2>Shift Manager</h2>
+      <h2>SQA Operation Review Analytics</h2>
       <p class="hint">社内アカウントでログインしてください</p>
       <button id="btn-google-signin" class="btn-primary">Googleでログイン</button>
       <div id="login-error" class="login-error"></div>
@@ -20,30 +20,19 @@
   </div>
 
   <header class="topbar">
-    <div class="brand">Shift Manager</div>
+    <div class="brand">SQA Operation Review Analytics</div>
+    <div id="freshness-badge" class="freshness-badge" title="お問い合わせデータの取込最新日">鮮度: …</div>
+    <div class="month-picker">
+      <label>対象月</label>
+      <input type="month" id="month-input" />
+    </div>
     <div id="user-info" class="user-info hidden">
       <span id="user-name"></span>
       <button id="btn-signout">ログアウト</button>
     </div>
     <div id="cloud-indicator" class="cloud-indicator hidden" title="リアルタイム同期中">☁️ クラウド</div>
 
-    <div class="month-picker">
-      <label>対象月</label>
-      <input type="month" id="month-input" />
-    </div>
-
-    <nav class="tabs">
-      <button class="tab" data-tab="dashboard">ダッシュボード</button>
-      <button class="tab" data-tab="employees">従業員</button>
-      <button class="tab" data-tab="holidays">祝日</button>
-      <button class="tab" data-tab="demand">必要人員</button>
-      <button class="tab" data-tab="shift">シフト表</button>
-      <button class="tab" data-tab="visualize">時間帯別人数</button>
-      <button class="tab" data-tab="staffing-fit">人員整合性</button>
-      <button class="tab" data-tab="history">履歴・AI</button>
-    </nav>
-
-    <div class="actions">
+    <div class="actions" id="shift-actions">
       <button id="btn-auto-assign" class="btn-primary">自動アサイン</button>
       <button id="btn-csv-import">CSV読込</button>
       <button id="btn-csv-export">CSV出力</button>
@@ -52,7 +41,30 @@
     </div>
   </header>
 
-  <main id="main">
+  <div class="layout">
+    <aside class="sidebar">
+      <button class="tab nav-item" data-tab="dashboard">📊 ダッシュボード</button>
+      <button class="tab nav-item" data-tab="staffing-fit">⚖️ 人員整合性</button>
+
+      <div class="nav-group" data-pillar="shift">
+        <div class="nav-group-head">🗓 シフト管理</div>
+        <button class="tab nav-item sub" data-tab="shift">シフト表</button>
+        <button class="tab nav-item sub" data-tab="demand">必要人員</button>
+        <button class="tab nav-item sub" data-tab="visualize">時間帯別人数</button>
+        <button class="tab nav-item sub" data-tab="employees">従業員</button>
+        <button class="tab nav-item sub" data-tab="holidays">祝日</button>
+      </div>
+
+      <div class="nav-group" data-pillar="inquiry">
+        <div class="nav-group-head">💬 お問い合わせ分析</div>
+        <button class="tab nav-item sub" data-tab="inquiry-overview">概況サマリ</button>
+        <button class="tab nav-item sub" data-tab="inquiry-hourly">時間別</button>
+      </div>
+
+      <button class="tab nav-item" data-tab="history">🤖 履歴・AI</button>
+    </aside>
+
+    <main id="main">
     <!-- Dashboard -->
     <section class="view" data-view="dashboard">
       <h2>ダッシュボード</h2>
@@ -237,7 +249,41 @@
       <div class="table-wrap" id="sf-dow-wrap"></div>
       <div id="sf-summary"></div>
     </section>
+
+    <!-- お問い合わせ分析: 概況サマリ -->
+    <section class="view" data-view="inquiry-overview">
+      <div class="view-header">
+        <h2>お問い合わせ概況 <span class="hint" style="font-weight:400">— ライブ負荷(電話＋ビデオ)＋メール</span></h2>
+      </div>
+      <div id="iq-ov-status" class="hint"></div>
+      <div id="iq-ov-cards" class="dash-grid"></div>
+      <div id="iq-ov-body"></div>
+    </section>
+
+    <!-- お問い合わせ分析: 時間別 -->
+    <section class="view" data-view="inquiry-hourly">
+      <div class="view-header">
+        <h2>時間別ボリューム <span class="hint" style="font-weight:400">— 日×時間 / 曜日×時間</span></h2>
+        <div class="sf-controls">
+          <label>表示:
+            <select id="iq-hr-metric">
+              <option value="total" selected>ライブ総量</option>
+              <option value="demand">要対応 (AI自動除く)</option>
+              <option value="missed">Missed件数</option>
+              <option value="missedRate">Missed率</option>
+            </select>
+          </label>
+          <button id="iq-hr-reload">再取得</button>
+        </div>
+      </div>
+      <div id="iq-hr-status" class="hint"></div>
+      <h3 class="sf-h3">日別 × 時間</h3>
+      <div class="table-wrap" id="iq-hr-daily"></div>
+      <h3 class="sf-h3">曜日別 平均</h3>
+      <div class="table-wrap" id="iq-hr-dow"></div>
+    </section>
   </main>
+  </div><!-- /.layout -->
 
   <!-- Modal -->
   <div id="modal" class="modal hidden">
@@ -262,9 +308,12 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 
+  <script src="sqa-data.js"></script>
   <script src="app.js"></script>
   <script src="cloud.js"></script>
   <script src="history.js"></script>
   <script src="volume.js"></script>
+  <script src="inquiry.js"></script>
+  <script src="nav.js"></script>
 </body>
 </html>
