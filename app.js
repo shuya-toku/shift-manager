@@ -289,6 +289,10 @@ function bindGlobalEvents() {
     ensureMonthScaffolding();
     save();
     renderAll();
+    // Supabase直読みの分析タブは renderAll に含まれないので、表示中なら明示的に再取得
+    const at = document.querySelector('.tab.active')?.dataset.tab;
+    if (at === 'staffing-fit' && window.StaffingFit) window.StaffingFit.render();
+    else if (at && at.indexOf('inquiry-') === 0 && window.InquiryAnalysis) window.InquiryAnalysis.render(at);
   });
 
   // Top actions
