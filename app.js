@@ -339,6 +339,8 @@ function bindGlobalEvents() {
 function switchTab(tab) {
   document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.dataset.view === tab));
+  // 人員整合性タブはSupabaseから非同期で読むため、表示時に遅延レンダリング
+  if (tab === 'staffing-fit' && window.StaffingFit) window.StaffingFit.render();
 }
 
 function ensureMonthScaffolding() {
@@ -1359,6 +1361,64 @@ function countAssignedFor(date, band, role) {
   return count;
 }
 
+// Unique employees whose WORK shift covers (date, band), regardless of role.
+// Dedupes dual-role staff and handles overnight (prev-date cells reaching into this date).
+// Returns an array of employee objects. Used by 人員整合性 (volume.js).
+function staffedEmployeesInBand(date, band) {
+  const seen = new Set();
+  const out = [];
+  const collect = (cellDate) => {
+    const day = state.shift[cellDate] || {};
+    for (const empId in day) {
+      if (seen.has(empId)) continue;
+      const cell = day[empId];
+      if (cell.status !== STATUS.WORK) continue;
+      const emp = state.employees.find(e => e.id === empId);
+      if (!emp) continue;
+      if (cellCoversBandOnDate(cell, cellDate, date, band)) { seen.add(empId); out.push(emp); }
+    }
+  };
+  collect(date);
+  const prev = addDays(date, -1);
+  if (prev) collect(prev);
+  return out;
+}
+
+// Unique employees whose WORK shift covers a single hour (hour:00–hour:59) on `date`.
+// Mirrors showHourDetail's coverage rules (overnight + Night early-morning). Used by 人員整合性 (毎時).
+function staffedEmployeesAtHour(date, hour) {
+  const seen = new Set();
+  const out = [];
+  const slotMin = hour * 60 + 30;
+  const collect = (shiftDate) => {
+    const dayShifts = state.shift[shiftDate] || {};
+    for (const empId in dayShifts) {
+      if (seen.has(empId)) continue;
+      const cell = dayShifts[empId];
+      if (cell.status !== STATUS.WORK) continue;
+      const emp = state.employees.find(e => e.id === empId);
+      if (!emp) continue;
+      const startMin = timeToMin(cell.start);
+      let endMin = timeToMin(cell.end);
+      if (startMin == null || endMin == null) continue;
+      if (endMin <= startMin) endMin += 24 * 60;
+      const sH = Math.floor(startMin / 60), eH = Math.floor(timeToMin(cell.end) / 60);
+      const isNightMorning = (emp.roles || []).includes('Night')
+        && sH < 12 && eH <= 12 && sH <= eH && (endMin - startMin) <= 12 * 60;
+      const effectiveDate = isNightMorning ? (addDays(shiftDate, 1) || shiftDate) : shiftDate;
+      if (effectiveDate !== date) continue;
+      const covers = endMin <= 24 * 60
+        ? (slotMin >= startMin && slotMin < endMin)
+        : (shiftDate === date ? slotMin >= startMin : slotMin < endMin - 24 * 60);
+      if (covers) { seen.add(empId); out.push(emp); }
+    }
+  };
+  collect(date);
+  const prev = addDays(date, -1);
+  if (prev) collect(prev);
+  return out;
+}
+
 // Returns true if a shift cell (starting on cellDate) covers the given band on bandDate.
 // For overnight shifts (end <= start), the shift extends into bandDate = cellDate+1.
 function cellCoversBandOnDate(cell, cellDate, bandDate, band) {
@@ -2222,6 +2282,11 @@ window.ShiftApp = {
   get state() { return state; },
   set state(v) { Object.assign(state, v); },
   save, load, renderAll, init,
+  // Read-only helpers/constants exposed for volume.js (人員整合性タブ)
+  TIME_BANDS, ROLES,
+  monthDates, getDow, DOW_LABELS,
+  isKHHoliday, isJPHoliday,
+  staffedEmployeesInBand, staffedEmployeesAtHour,
   // Override hooks: cloud.js can set these to take over persistence
   saveOverride: null,
   loadOverride: null,

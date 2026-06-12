@@ -39,6 +39,7 @@
       <button class="tab" data-tab="demand">必要人員</button>
       <button class="tab" data-tab="shift">シフト表</button>
       <button class="tab" data-tab="visualize">時間帯別人数</button>
+      <button class="tab" data-tab="staffing-fit">人員整合性</button>
       <button class="tab" data-tab="history">履歴・AI</button>
     </nav>
 
@@ -197,6 +198,45 @@
       </div>
       <div class="table-wrap" id="visualize-wrap"></div>
     </section>
+
+    <!-- Staffing vs Volume (人員整合性) -->
+    <section class="view" data-view="staffing-fit">
+      <div class="view-header">
+        <h2>人員整合性 <span class="hint" style="font-weight:400">— お問い合わせボリューム × 在席人員</span></h2>
+        <div class="sf-controls">
+          <label>粒度:
+            <select id="sf-gran">
+              <option value="hour" selected>毎時 (24h)</option>
+              <option value="band">5時間帯</option>
+            </select>
+          </label>
+          <label>表示:
+            <select id="sf-metric">
+              <option value="staffed" selected>在席人数</option>
+              <option value="missed">Missed件数</option>
+              <option value="missedRate">Missed率</option>
+              <option value="volume">ライブ総量</option>
+              <option value="demand">要対応 (ライブ・AI自動除く)</option>
+              <option value="gap">過不足ギャップ (在席−必要)</option>
+            </select>
+          </label>
+          <label><input type="checkbox" id="sf-exclude-mgr" /> Mgr 除外</label>
+          <label><input type="checkbox" id="sf-exclude-de" checked /> DE 除外</label>
+          <button id="sf-reload">再取得</button>
+        </div>
+      </div>
+      <p class="hint">
+        Supabase <code>contact_facts</code> の<b>ライブ負荷</b>（電話＋ビデオ。<b>メールは非同期のため除外</b>）を日×時間で集約し、シフトの在席人数(DE除く)と突合。
+        セルにマウスを乗せると ライブ総量/要対応/Missed/在席/必要/ギャップ を表示。
+        <span style="color:var(--danger,#c0392b)">●</span> = 有人なのにMissedが出た時間（人員不足/配置ミスマッチの疑い）。
+      </p>
+      <div id="sf-status" class="hint"></div>
+      <h3 class="sf-h3">日別 × 時間</h3>
+      <div class="table-wrap" id="sf-table-wrap"></div>
+      <h3 class="sf-h3">曜日別 平均（完全な日のみ）</h3>
+      <div class="table-wrap" id="sf-dow-wrap"></div>
+      <div id="sf-summary"></div>
+    </section>
   </main>
 
   <!-- Modal -->
@@ -225,5 +265,6 @@
   <script src="app.js"></script>
   <script src="cloud.js"></script>
   <script src="history.js"></script>
+  <script src="volume.js"></script>
 </body>
 </html>

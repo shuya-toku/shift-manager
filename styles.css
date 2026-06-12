@@ -389,3 +389,22 @@ input, select, textarea { font-family: inherit; font-size: 13px; }
 .chat-input-row { display: flex; gap: 8px; }
 .chat-input { flex: 1; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; outline: none; }
 .chat-input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(37,99,235,0.15); }
+
+/* ---- 人員整合性 (Staffing vs Volume) ---- */
+.sf-controls { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.sf-controls select { padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; }
+.sf-heatmap { font-variant-numeric: tabular-nums; }
+.sf-heatmap th, .sf-heatmap td { text-align: center; padding: 6px 10px; white-space: nowrap; }
+.sf-heatmap .date-cell { text-align: left; font-weight: 600; }
+.sf-cell { position: relative; min-width: 64px; font-weight: 600; }
+.sf-dot { color: var(--danger, #c0392b); margin-left: 3px; font-size: 11px; vertical-align: top; }
+.sf-novol { color: #9aa3ad; font-weight: 400; }
+.sf-bullets { margin: 6px 0 14px; padding-left: 20px; line-height: 1.7; }
+.sf-cap-table { width: auto; }
+.sf-cap-table th { background: #f1f5f9; font-size: 12px; }
+.sf-partial { color: #b8860b; font-weight: 400; font-size: 10px; margin-left: 3px; vertical-align: middle; }
+.sf-h3 { margin: 18px 0 6px; font-size: 14px; color: var(--text, #1f2933); }
+.sf-heatmap td, .sf-heatmap th { padding: 4px 6px; font-size: 12px; min-width: 0; }
+.sf-heatmap .sf-cell { min-width: 30px; }
+.sf-heatmap .date-cell { text-align: left; white-space: nowrap; position: sticky; left: 0; background: #fff; z-index: 1; }
+.sf-dot { color: var(--danger, #c0392b); margin-left: 1px; font-size: 9px; vertical-align: top; }
