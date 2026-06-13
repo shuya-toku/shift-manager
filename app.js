@@ -529,7 +529,11 @@ function renderEmployees() {
   tbody.innerHTML = '';
   for (const e of state.employees) {
     const tr = document.createElement('tr');
-    const rolesHtml = (e.roles || []).map(r => `<span class="tag ${ROLE_CLASS[r] || ''}">${r}</span>`).join('');
+    // ロールはチップのトグルで付け外し（クリックで追加/解除）
+    const rolesHtml = ROLES.map(r => {
+      const on = (e.roles || []).includes(r);
+      return `<button type="button" class="role-toggle${on ? ' on' : ''}" data-id="${escapeAttr(e.id)}" data-role="${escapeAttr(r)}" title="クリックで ${r} を${on ? '外す' : '付ける'}">${escapeHtml(r)}</button>`;
+    }).join('');
     const dowHtml = (e.workableDow || []).map(d => DOW_LABELS[d]).join(',');
     const dayCell = (e.maxDays != null && e.maxDays !== e.targetDays)
       ? `${e.targetDays} <small style="color:#6b7280">/ 上限 ${e.maxDays}</small>`
@@ -543,7 +547,7 @@ function renderEmployees() {
       <td>${escapeHtml(e.name)}</td>
       <td><span class="tag ${e.nationality === 'JP' ? 'jp' : 'kh'}">${e.nationality}</span></td>
       <td><span class="tag ${e.employment === 'FT' ? 'ft' : 'pt'}">${e.employment}</span></td>
-      <td>${rolesHtml}</td>
+      <td class="role-cell">${rolesHtml}</td>
       <td>${targetCell}</td>
       <td>${e.defaultStart}-${e.defaultEnd}</td>
       <td>${e.defaultBreakMin || 0}</td>
@@ -558,6 +562,19 @@ function renderEmployees() {
   }
   tbody.querySelectorAll('button.edit').forEach(b => b.addEventListener('click', () => openEmployeeModal(b.dataset.id)));
   tbody.querySelectorAll('button.del').forEach(b => b.addEventListener('click', () => deleteEmployee(b.dataset.id)));
+  // ロールのトグル（その場で追加/解除して保存。重い全体再描画はしない）
+  tbody.querySelectorAll('.role-toggle').forEach(btn => btn.addEventListener('click', () => {
+    const emp = state.employees.find(x => x.id === btn.dataset.id);
+    if (!emp) return;
+    emp.roles = emp.roles || [];
+    const role = btn.dataset.role;
+    const idx = emp.roles.indexOf(role);
+    const on = idx < 0;
+    if (on) emp.roles.push(role); else emp.roles.splice(idx, 1);
+    save();
+    btn.classList.toggle('on', on);
+    btn.title = `クリックで ${role} を${on ? '外す' : '付ける'}`;
+  }));
 }
 
 function deleteEmployee(id) {

@@ -93,17 +93,17 @@ input, select, textarea { font-family: inherit; font-size: 13px; }
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
-  overflow: auto;
-  max-height: calc(100vh - 180px);
+  overflow-x: auto;        /* 横は必要時のみスクロール */
+  /* 縦の高さ制限は撤去 → 全行を表示し、画面(ページ)側でスクロール */
 }
 .data-table {
   border-collapse: collapse;
   width: 100%;
-  font-size: 12px;
+  font-size: 13px;
 }
 .data-table th, .data-table td {
   border-bottom: 1px solid var(--border);
-  padding: 6px 10px;
+  padding: 9px 12px;
   text-align: left;
   vertical-align: middle;
 }
@@ -116,6 +116,12 @@ input, select, textarea { font-family: inherit; font-size: 13px; }
 }
 .data-table tbody tr:nth-child(even) { background: var(--row-alt); }
 .data-table tbody tr:hover { background: #eff6ff; }
+/* 従業員マスター: ロールのトグルチップ（クリックで付け外し） */
+.role-cell { white-space: normal; min-width: 220px; }
+.role-toggle { display: inline-block; margin: 2px 4px 2px 0; padding: 3px 10px; border-radius: 999px;
+  border: 1px dashed var(--border); background: #fff; color: #9aa5b1; font-size: 11px; cursor: pointer; line-height: 1.4; }
+.role-toggle:hover { border-color: var(--accent); color: var(--accent); }
+.role-toggle.on { border-style: solid; border-color: var(--accent); background: var(--accent); color: #fff; font-weight: 600; }
 .data-table .actions-cell { white-space: nowrap; }
 .data-table .actions-cell button {
   padding: 2px 6px;
