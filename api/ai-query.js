@@ -1,11 +1,11 @@
 // Vercel serverless function — SCOPE の AIアシスタント（キャパシティ＆人員配置の予測/相談）。
 // クライアントが集計した「シフト在席 × お問い合わせ実績」のコンパクトな文脈(contextText)と
-// 会話履歴(history)を受け取り、Claude (Opus 4.8 + adaptive thinking) に渡して回答を返す。
+// 会話履歴(history)を受け取り、Claude (Haiku 4.5) に渡して回答を返す。
 // Vercel ダッシュボード → Settings → Environment Variables に ANTHROPIC_API_KEY を設定すること。
 // 関数の最大実行時間(maxDuration)は vercel.json の functions で延長している。
 // Node 18+ 組み込み fetch を使用（npm依存なし）。
 
-const MODEL = 'claude-opus-4-8';
+const MODEL = 'claude-haiku-4-5';
 
 const SYSTEM = `あなたは「SCOPE（SQA Capacity & Operator Planning Engine）」の人員配置アシスタントです。
 SQAマネージャーが、過去のお問い合わせ実績とシフト在席状況をもとに「これからの人員配置」を考えるのを助けます。
@@ -76,8 +76,7 @@ module.exports = async function handler(req, res) {
       body: JSON.stringify({
         model: MODEL,
         max_tokens: 3500,
-        thinking: { type: 'adaptive' },        // 予測/配置設計は推論を要するため適応的思考をON
-        output_config: { effort: 'medium' },    // 対話用に応答速度とのバランス
+        // Haiku 4.5 は adaptive thinking / effort 未対応のため付与しない（付けると400）。
         system: SYSTEM,
         messages,
       }),
