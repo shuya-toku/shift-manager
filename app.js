@@ -46,6 +46,12 @@ const STATUS = { WORK: 'work', OFF: 'off', NG: 'ng', AL: 'al', AL_HALF: 'al_half
 
 const STORAGE_KEY = 'shift-manager-v1';
 
+// 過去シフトの自動取込バージョン。data/history のシードデータを更新したら +1。
+// 既存 localStorage ユーザーにも差分取込が走るようにするためのマーカー。
+const SEED_VERSION = 1;
+// 既定表示月（過去シフト取込後に最新の実績月へ寄せる。実績が無ければこの値）
+const DEFAULT_PLANNING_MONTH = '2026-05';
+
 // ---------- State ----------
 const state = {
   month: '2026-05',     // YYYY-MM
@@ -55,6 +61,7 @@ const state = {
   demandTemplates: { weekday: null, weekend: null },  // { '04-07': { Mgr, JP, Night, opTotal, opJPMin }, ... }
   shift: {},             // { 'YYYY-MM-DD': { employeeId: { status, start, end, breakMin } } }
   gapReport: [],
+  seedVersion: 0,        // 取込済みの過去シフトシードバージョン（SEED_VERSION と比較して差分取込）
 };
 
 // ---------- Storage ----------
@@ -131,11 +138,19 @@ function migrateDemand() {
 function resetAll() {
   if (!confirm('全データをリセットしてシードデータに戻します。よろしいですか？')) return;
   localStorage.removeItem(STORAGE_KEY);
-  Object.assign(state, { month: '2026-05', employees: [], holidays: [], demand: {}, shift: {} });
+  Object.assign(state, { month: '2026-05', employees: [], holidays: [], demand: {}, shift: {}, seedVersion: 0 });
   seedInitialData();
   save();
   renderAll();
-  toast('リセットしました', 'success');
+  // 過去シフト(data/history)を再取込し、既定月を最新の実績月へ
+  seedHistoricalShifts().then((r) => {
+    state.seedVersion = SEED_VERSION;
+    if (r.months && r.months.length) state.month = r.months.slice().sort().slice(-1)[0];
+    ensureMonthScaffolding();
+    save();
+    renderAll();
+    toast(`リセットしました（過去シフト ${r.imported} セル取込）`, 'success');
+  });
 }
 
 // ---------- Date helpers ----------
@@ -247,6 +262,43 @@ function seedInitialData() {
   }
 }
 
+// ---------- Seed historical shifts (data/history) ----------
+// 初回ロード/バージョン移行時に data/history/manifest.json を読み、列挙された
+// 過去シフトCSV(SQA Working Shift形式)を取り込んで state.shift のデフォルトにする。
+// opts.skipIfHasData=true なら、既に勤務(WORK)が入っている月はスキップして既存編集を保護。
+async function seedHistoricalShifts(opts = {}) {
+  let manifest;
+  try {
+    const res = await fetch('data/history/manifest.json', { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    manifest = await res.json();
+  } catch (e) {
+    console.warn('[seed] manifest.json を取得できませんでした:', e.message || e);
+    return { imported: 0, employees: 0, months: [] };
+  }
+  const files = Array.isArray(manifest.files) ? manifest.files : [];
+  let imported = 0, employees = 0;
+  const months = [];
+  for (const f of files) {
+    try {
+      const r = await fetch(`data/history/${encodeURIComponent(f)}`, { cache: 'no-store' });
+      if (!r.ok) { console.warn(`[seed] ${f} skip (HTTP ${r.status})`); continue; }
+      const text = await r.text();
+      const out = importSQAFormat(text, { silent: true, skipIfHasData: opts.skipIfHasData });
+      if (out && out.skipped) continue;
+      if (out) {
+        imported += out.updatedShifts || 0;
+        employees += out.importedEmployees || 0;
+        if (out.updatedShifts > 0 && out.month) months.push(out.month);
+      }
+    } catch (e) {
+      console.warn(`[seed] ${f} の取込に失敗:`, e.message || e);
+    }
+  }
+  console.log(`[seed] 過去シフト取込: ${imported} セル / 新規${employees}名 / 月=${months.join(', ') || 'なし'}`);
+  return { imported, employees, months };
+}
+
 // ---------- App init ----------
 function init(opts = {}) {
   // skipLoad: cloud.js calls this after applying remote state — don't re-load locally
@@ -256,7 +308,26 @@ function init(opts = {}) {
       if (!window.FIREBASE_CONFIG) {
         seedInitialData();
         save();
+        // 初回: data/history の過去シフトCSVを自動取込 → 既定月を最新の実績月へ
+        seedHistoricalShifts().then((r) => {
+          state.seedVersion = SEED_VERSION;
+          if (r.months && r.months.length) state.month = r.months.slice().sort().slice(-1)[0];
+          ensureMonthScaffolding();
+          save();
+          renderAll();
+        });
       }
+    } else if (!window.FIREBASE_CONFIG && (state.seedVersion || 0) < SEED_VERSION) {
+      // 既存 localStorage ユーザー: シード更新分の過去シフトを追加取込（既存編集は保護）
+      const keepMonth = state.month;
+      seedHistoricalShifts({ skipIfHasData: true }).then((r) => {
+        state.seedVersion = SEED_VERSION;
+        state.month = keepMonth; // 既存ユーザーの表示月は変えない
+        ensureMonthScaffolding();
+        save();
+        renderAll();
+        if (r.imported) toast(`過去シフトを取り込みました: ${r.imported} セル（${(r.months || []).join(', ')}）`, 'success');
+      });
     }
   }
   if (!window._eventsBound) {
@@ -2007,13 +2078,13 @@ function importCSV(ev) {
   reader.readAsText(f, 'utf-8');
 }
 
-function parseAndImportCSV(text) {
+function parseAndImportCSV(text, opts = {}) {
   text = text.replace(/^﻿/, '');
   if (text.includes('# Employees') || text.includes('# Holidays')) {
-    importOwnFormat(text);
+    return importOwnFormat(text);
   } else if (/\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s*\/\s*\d{4}/.test(text)
           || /\bID\s*,\s*Employee\s*name/i.test(text)) {
-    importSQAFormat(text);
+    return importSQAFormat(text, opts);
   } else {
     throw new Error('未対応のCSV形式です (このアプリ出力 or SQA Working Shift 形式のみ対応)');
   }
@@ -2058,15 +2129,18 @@ function importOwnFormat(text) {
   save(); renderAll();
 }
 
-function importSQAFormat(text) {
+function importSQAFormat(text, opts = {}) {
   const rows = parseFullCSV(text);
   // Detect month from "May / 2026" header
   const MONTHS = { January:1, February:2, March:3, April:4, May:5, June:6, July:7, August:8, September:9, October:10, November:11, December:12 };
   const flat = rows.slice(0, 3).flat().join('|');
   const mm = flat.match(/(January|February|March|April|May|June|July|August|September|October|November|December)\s*\/\s*(\d{4})/);
-  if (mm) {
-    state.month = `${mm[2]}-${pad2(MONTHS[mm[1]])}`;
+  const targetMonth = mm ? `${mm[2]}-${pad2(MONTHS[mm[1]])}` : state.month;
+  // 既存データ保護: 既に勤務(WORK)が入っている月は上書きしない（差分シード取込時のみ）
+  if (opts.skipIfHasData && hasShiftData(targetMonth)) {
+    return { month: targetMonth, importedEmployees: 0, updatedShifts: 0, skipped: true };
   }
+  state.month = targetMonth;
   const dim = daysInMonth(state.month);
   ensureMonthScaffolding();
 
@@ -2171,8 +2245,11 @@ function importSQAFormat(text) {
       }
     }
   }
-  save(); renderAll();
-  toast(`取り込み完了: 新規 ${importedEmployees} 名 / シフト ${updatedShifts} セル${unknownStatuses.size ? ` (未知ステータス: ${[...unknownStatuses].slice(0,5).join(', ')})` : ''}`, 'success');
+  if (!opts.silent) {
+    save(); renderAll();
+    toast(`取り込み完了: 新規 ${importedEmployees} 名 / シフト ${updatedShifts} セル${unknownStatuses.size ? ` (未知ステータス: ${[...unknownStatuses].slice(0,5).join(', ')})` : ''}`, 'success');
+  }
+  return { month: state.month, importedEmployees, updatedShifts, skipped: false };
 }
 
 function parseSQACsvRole(raw) {

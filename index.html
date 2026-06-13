@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>SQA Operation Review Analytics</title>
+  <title>SCOPE — SQA Capacity & Operator Planning Engine</title>
   <link rel="stylesheet" href="styles.css" />
   <script src="firebase-config.js"></script>
   <script src="supabase-config.js"></script>
@@ -12,7 +12,8 @@
   <!-- Login overlay (shown when Firebase config exists and user not signed in) -->
   <div id="login-overlay" class="login-overlay hidden">
     <div class="login-box">
-      <h2>SQA Operation Review Analytics</h2>
+      <h2>SCOPE</h2>
+      <p class="brand-tagline">SQA Capacity &amp; Operator Planning Engine</p>
       <p class="hint">社内アカウントでログインしてください</p>
       <button id="btn-google-signin" class="btn-primary">Googleでログイン</button>
       <div id="login-error" class="login-error"></div>
@@ -20,7 +21,7 @@
   </div>
 
   <header class="topbar">
-    <div class="brand">SQA Operation Review Analytics</div>
+    <div class="brand">SCOPE<span class="brand-sub">SQA Capacity &amp; Operator Planning Engine</span></div>
     <div id="freshness-badge" class="freshness-badge" title="お問い合わせデータの取込最新日">鮮度: …</div>
     <div class="month-picker">
       <label>対象月</label>
