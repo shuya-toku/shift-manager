@@ -259,7 +259,8 @@
     const anyStaff = dates.some(d => slots.some(s => grid[d][s.id].staffed > 0));
     status.innerHTML = `対象: <b>${month}</b>（${gran === 'band' ? '5時間帯' : '毎時24h'}） ／ 取得日数: ${Object.keys(data.byDate).length}日`
       + (incompleteCount ? ` ／ <span style="color:#b8860b">部分データ ${incompleteCount}日を除外（AI Call以外が未取込）</span>` : '')
-      + (anyStaff ? '' : ' ／ <span style="color:#c0392b">この月のシフトが未取込です（CSV読込で在席人数が入ります）</span>');
+      + (anyStaff ? '' : ' ／ <span style="color:#c0392b">この月のシフトが未取込です（CSV読込で在席人数が入ります）</span>')
+      + ' ／ <span class="hint">セルをクリックでその時間帯の詳細</span>';
 
     // クリック→理由パネル用コンテキストを保存
     ctx = { grid, gran, slots, excluded };
@@ -297,7 +298,8 @@
       const tds = slots.map(s => {
         const cell = grid[date][s.id];
         const mark = cell.staffedMissed ? '<span class="sf-dot">●</span>' : (cell.incomplete ? '<span class="sf-partial">部</span>' : '');
-        const clk = (cell.missed > 0 && !cell.incomplete) ? ' sf-clickable' : '';
+        // ボリュームのある完全データのセルはすべてクリック可（その時間帯のサマリ＋取りこぼし内訳を表示）
+        const clk = (cell.hasVol && !cell.incomplete) ? ' sf-clickable' : '';
         return `<td class="sf-cell${clk}" data-date="${date}" data-slot="${s.id}" style="${cellStyle(metric, cell)}" title="${escapeHtml(cellTitle(cell))}">${cellText(metric, cell, false)}${mark}</td>`;
       }).join('');
       const r = document.createElement('tr');
@@ -464,8 +466,11 @@
 
     // 推定理由（ヒューリスティック）
     const reasons = [];
-    if (staffed <= 0) reasons.push('🔴 <b>無人時間</b>：この時間に在席なし（シフト外）。');
-    else {
+    if (totMiss === 0) {
+      reasons.push(`✅ <b>取りこぼしなし</b>：この時間帯はライブ要対応${demand}件を在席${staffed}人で対応できています${pp != null ? `（1人あたり ${pp.toFixed(1)}件）` : ''}。`);
+    } else if (staffed <= 0) {
+      reasons.push('🔴 <b>無人時間</b>：この時間に在席なし（シフト外）。');
+    } else {
       if (pp != null && pp >= 3) reasons.push(`🔴 <b>過負荷</b>：在席${staffed}人に対しライブ要対応${demand}件（1人あたり ${pp.toFixed(1)}件）。`);
       if (videoMiss / (totMiss || 1) >= 0.6) reasons.push(`🟠 <b>ビデオ併発</b>：取りこぼしの${Math.round(videoMiss / totMiss * 100)}%がビデオ通話。同時着信に在席が追いつかず。`);
       if (facRows.length && facRows[0][1] / (totMiss || 1) >= 0.4) reasons.push(`🟠 <b>特定施設に集中</b>：「${facRows[0][0]}」が${facRows[0][1]}件（${Math.round(facRows[0][1] / totMiss * 100)}%）。`);

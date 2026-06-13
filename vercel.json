@@ -1,4 +1,7 @@
 {
   "buildCommand": "node build.js",
-  "outputDirectory": "public"
+  "outputDirectory": "public",
+  "functions": {
+    "api/ai-query.js": { "maxDuration": 60 }
+  }
 }

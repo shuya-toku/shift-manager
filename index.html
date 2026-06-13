@@ -187,19 +187,25 @@
       <div class="table-wrap" id="shift-table-wrap"></div>
     </section>
 
-    <!-- History / AI Chat -->
+    <!-- AI アシスタント（キャパシティ＆人員配置） -->
     <section class="view" data-view="history">
       <div class="view-header">
-        <h2>履歴・AI クエリ</h2>
-        <button id="btn-confirm-shift" class="btn-primary">今月のシフトを確定</button>
+        <h2>🤖 AI 人員配置アシスタント</h2>
+        <button id="btn-confirm-shift" class="btn-primary" title="任意: Supabaseにシフトを保存（未設定でもAI相談は使えます）">今月のシフトを確定</button>
       </div>
-      <p class="hint">シフトが確定したら「今月のシフトを確定」で Supabase に保存。その後、過去のシフトを自然言語で質問できます。</p>
+      <p class="hint">取り込み済みの<b>シフト在席</b>と<b>お問い合わせ実績（2026-02〜）</b>を時間帯×曜日で集計し、Claude (Opus 4.8) に相談できます。「これからの人員配置をどう組むか」を根拠データ付きで提案します。</p>
+      <div id="history-example-chips" class="example-chips">
+        <button class="chip" data-q="2026-04の実績を見て、取りこぼしが多い曜日と時間帯を教えて。増員すべき優先順位は？">取りこぼしワースト＆増員優先</button>
+        <button class="chip" data-q="過去の傾向から、来月の各曜日×時間帯に必要なオペレーター人数（DE除く）を提案して。現状との差分も。">来月の必要人数を提案</button>
+        <button class="chip" data-q="昼(12-16)の体制は今の在席で足りている？要対応・取りこぼしと在席の相関で説明して。">昼帯は足りてる？</button>
+        <button class="chip" data-q="お問い合わせボリュームと在席人数の相関を要約して。どの時間帯がボトルネック？">相関サマリ</button>
+      </div>
       <div class="chat-container">
         <div id="history-chat-log" class="chat-log">
-          <div class="chat-msg chat-system">シフトを確定後、下のボックスから質問できます。<br>例: 「4/15の15時台は誰が働いていた？」「先月の水曜夜は何人体制？」</div>
+          <div class="chat-msg chat-system">下のボックスから質問できます。上のチップをクリックしてもOK。<br>例:「水曜の夕方は何人体制にすべき？」「2〜4月の傾向から来月の配置を提案して」</div>
         </div>
         <div class="chat-input-row">
-          <input type="text" id="history-chat-input" class="chat-input" placeholder="例: 4月15日の15時台は？" />
+          <input type="text" id="history-chat-input" class="chat-input" placeholder="例: 来月の水曜昼は何人必要？根拠も添えて" />
           <button id="history-chat-send" class="btn-primary">送信</button>
         </div>
       </div>
