@@ -199,7 +199,13 @@
     catch (e) { status.innerHTML = `<span style="color:#c0392b">取得失敗: ${escapeHtml(String(e.message || e))}</span>`; rendering = false; return; }
 
     if (Object.keys(data.byDate).length === 0) {
-      status.innerHTML = `<span style="color:#c0392b">${month} のボリュームデータがありません（contact_facts は 2026-02 〜 2026-06-05）。</span>`;
+      status.textContent = `対象月: ${month}`;
+      dowWrap.innerHTML = ''; summary.innerHTML = '';
+      if (window.SQAContext) window.SQAContext.emptyState(wrap, {
+        icon: '📭', title: `${month} のボリューム実績がありません`,
+        reason: '取込範囲は2026-02以降です。範囲外の月か、まだ取り込まれていません。当月分はAI電話以外が遅れて入ります。',
+        actions: [{ label: '対象月を切り替える', onClick: () => document.getElementById('month-input')?.focus() }],
+      });
       rendering = false; return;
     }
 

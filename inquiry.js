@@ -78,7 +78,16 @@
       status.innerHTML = `<span style="color:#c0392b">取得失敗: ${esc(String(e.message || e))}</span>`;
       return;
     }
-    if (!rows.length) { status.innerHTML = `<span style="color:#c0392b">${m} のデータがありません。</span>`; return; }
+    if (!rows.length) {
+      status.textContent = `対象月: ${m}`;
+      cards.innerHTML = '';
+      if (window.SQAContext) window.SQAContext.emptyState(body, {
+        icon: '📭', title: `${m} のお問い合わせ実績がありません`,
+        reason: '取込範囲は2026-02以降です。範囲外の月か、まだ取り込まれていません。当月分はAI電話以外が遅れて入ります。',
+        actions: [{ label: '対象月を切り替える', onClick: () => document.getElementById('month-input')?.focus() }],
+      });
+      return;
+    }
 
     const agg = aggChannel(rows);
     const pAgg = aggChannel(prevRows);
@@ -159,7 +168,16 @@
     let byDate;
     try { byDate = await loadHourly(m); } catch (e) { status.innerHTML = `<span style="color:#c0392b">取得失敗: ${esc(String(e.message || e))}</span>`; return; }
     const dates = Object.keys(byDate).sort();
-    if (!dates.length) { status.innerHTML = `<span style="color:#c0392b">${m} のデータがありません。</span>`; return; }
+    if (!dates.length) {
+      status.textContent = `対象月: ${m}`;
+      dowWrap.innerHTML = '';
+      if (window.SQAContext) window.SQAContext.emptyState(dailyWrap, {
+        icon: '📭', title: `${m} のお問い合わせ実績がありません`,
+        reason: '取込範囲は2026-02以降です。対象月を切り替えてください。',
+        actions: [{ label: '対象月を切り替える', onClick: () => document.getElementById('month-input')?.focus() }],
+      });
+      return;
+    }
 
     const complete = completeDates(byDate);
     const incCount = dates.length - complete.size;
