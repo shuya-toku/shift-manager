@@ -18,28 +18,30 @@ for (const f of files) {
   }
 }
 
-// 過去シフトの自動取込データ（data/history → public/data/history）。
-// manifest.json と列挙されたCSVのみコピー（README/_scan.mjs は配信不要）。
-const HISTORY_SRC = path.join('data', 'history');
-if (fs.existsSync(HISTORY_SRC)) {
-  const HISTORY_OUT = path.join(OUT, 'data', 'history');
-  fs.mkdirSync(HISTORY_OUT, { recursive: true });
+// 自動取込データ（data/<sub> → public/data/<sub>）。manifest.json と列挙CSVのみコピー。
+function copyDataDir(sub) {
+  const SRC = path.join('data', sub);
+  if (!fs.existsSync(SRC)) return;
+  const DST = path.join(OUT, 'data', sub);
+  fs.mkdirSync(DST, { recursive: true });
   let manifestFiles = [];
-  const manifestPath = path.join(HISTORY_SRC, 'manifest.json');
+  const manifestPath = path.join(SRC, 'manifest.json');
   if (fs.existsSync(manifestPath)) {
-    fs.copyFileSync(manifestPath, path.join(HISTORY_OUT, 'manifest.json'));
-    console.log('copied data/history/manifest.json');
+    fs.copyFileSync(manifestPath, path.join(DST, 'manifest.json'));
+    console.log(`copied data/${sub}/manifest.json`);
     try { manifestFiles = JSON.parse(fs.readFileSync(manifestPath, 'utf8')).files || []; } catch (e) {}
   }
   for (const f of manifestFiles) {
-    const src = path.join(HISTORY_SRC, f);
+    const src = path.join(SRC, f);
     if (fs.existsSync(src)) {
-      fs.copyFileSync(src, path.join(HISTORY_OUT, f));
-      console.log('copied data/history/' + f);
+      fs.copyFileSync(src, path.join(DST, f));
+      console.log(`copied data/${sub}/` + f);
     } else {
-      console.warn('skip (missing) data/history/' + f);
+      console.warn(`skip (missing) data/${sub}/` + f);
     }
   }
 }
+copyDataDir('history');   // 過去シフト
+copyDataDir('bookings');  // 予約(onhand)
 
 console.log('build done → public/');

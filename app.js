@@ -49,6 +49,8 @@ const STORAGE_KEY = 'shift-manager-v1';
 // 過去シフトの自動取込バージョン。data/history のシードデータを更新したら +1。
 // 既存 localStorage ユーザーにも差分取込が走るようにするためのマーカー。
 const SEED_VERSION = 1;
+// 予約(onhand)データの自動取込バージョン。data/bookings のシードを更新したら +1。
+const BOOKINGS_VERSION = 1;
 // 既定表示月（過去シフト取込後に最新の実績月へ寄せる。実績が無ければこの値）
 const DEFAULT_PLANNING_MONTH = '2026-05';
 
@@ -62,6 +64,8 @@ const state = {
   shift: {},             // { 'YYYY-MM-DD': { employeeId: { status, start, end, breakMin } } }
   gapReport: [],
   seedVersion: 0,        // 取込済みの過去シフトシードバージョン（SEED_VERSION と比較して差分取込）
+  bookings: {},          // 予約(onhand)日次 { 'YYYY-MM-DD': { res, sold } } res=新規予約数 sold=販売数(稼働)
+  bookingsVersion: 0,    // 取込済みの予約シードバージョン（BOOKINGS_VERSION と比較）
 };
 
 // ---------- Storage ----------
@@ -138,11 +142,11 @@ function migrateDemand() {
 function resetAll() {
   if (!confirm('全データをリセットしてシードデータに戻します。よろしいですか？')) return;
   localStorage.removeItem(STORAGE_KEY);
-  Object.assign(state, { month: '2026-05', employees: [], holidays: [], demand: {}, shift: {}, seedVersion: 0 });
+  Object.assign(state, { month: '2026-05', employees: [], holidays: [], demand: {}, shift: {}, seedVersion: 0, bookings: {}, bookingsVersion: 0 });
   seedInitialData();
   save();
   renderAll();
-  // 過去シフト(data/history)を再取込し、既定月を最新の実績月へ
+  // 過去シフト(data/history)＋予約(data/bookings)を再取込し、既定月を最新の実績月へ
   seedHistoricalShifts().then((r) => {
     state.seedVersion = SEED_VERSION;
     if (r.months && r.months.length) state.month = r.months.slice().sort().slice(-1)[0];
@@ -151,6 +155,7 @@ function resetAll() {
     renderAll();
     toast(`リセットしました（過去シフト ${r.imported} セル取込）`, 'success');
   });
+  seedBookings().then((n) => { state.bookingsVersion = BOOKINGS_VERSION; if (n) save(); });
 }
 
 // ---------- Date helpers ----------
@@ -299,6 +304,58 @@ async function seedHistoricalShifts(opts = {}) {
   return { imported, employees, months };
 }
 
+// ---------- Seed bookings (data/bookings, onhand形式) ----------
+// onhand CSV の「全体,全体,新規予約数/販売数」行を日次系列として state.bookings に取り込む。
+// res=新規予約数(予約ボリューム) / sold=販売数(稼働=売れた部屋数, 未来日はオンザブック)。
+function parseOnhandBookings(text) {
+  const rows = parseFullCSV(text.replace(/^﻿/, ''));
+  if (!rows.length) return {};
+  const header = rows[0] || [];
+  const dateCols = [];
+  for (let c = 0; c < header.length; c++) {
+    const m = (header[c] || '').trim().match(/^(\d{4})\/(\d{2})\/(\d{2})$/);
+    if (m) dateCols.push({ idx: c, date: `${m[1]}-${m[2]}-${m[3]}` });
+  }
+  const out = {};
+  for (const r of rows) {
+    if ((r[0] || '').trim() !== '全体') continue;          // 全施設合計行のみ使用
+    const dt = (r[2] || '').trim();
+    const key = dt === '新規予約数' ? 'res' : (dt === '販売数' ? 'sold' : null);
+    if (!key) continue;
+    for (const dc of dateCols) {
+      const v = parseInt((r[dc.idx] || '').trim(), 10);
+      if (!isNaN(v)) { (out[dc.date] ||= { res: 0, sold: 0 }); out[dc.date][key] = v; }
+    }
+  }
+  return out;
+}
+
+async function seedBookings() {
+  let manifest;
+  try {
+    const res = await fetch('data/bookings/manifest.json', { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    manifest = await res.json();
+  } catch (e) {
+    console.warn('[bookings] manifest.json を取得できませんでした:', e.message || e);
+    return 0;
+  }
+  const files = Array.isArray(manifest.files) ? manifest.files : [];
+  let days = 0;
+  for (const f of files) {
+    try {
+      const r = await fetch(`data/bookings/${encodeURIComponent(f)}`, { cache: 'no-store' });
+      if (!r.ok) { console.warn(`[bookings] ${f} skip (HTTP ${r.status})`); continue; }
+      const parsed = parseOnhandBookings(await r.text());
+      for (const date in parsed) { state.bookings[date] = parsed[date]; days++; }
+    } catch (e) {
+      console.warn(`[bookings] ${f} の取込に失敗:`, e.message || e);
+    }
+  }
+  console.log(`[bookings] 予約データ取込: ${days}日分 / 月=${[...new Set(Object.keys(state.bookings).map(d => d.slice(0,7)))].sort().join(', ')}`);
+  return days;
+}
+
 // ---------- App init ----------
 function init(opts = {}) {
   // skipLoad: cloud.js calls this after applying remote state — don't re-load locally
@@ -316,18 +373,30 @@ function init(opts = {}) {
           save();
           renderAll();
         });
+        // 予約(onhand)も自動取込
+        seedBookings().then((n) => { state.bookingsVersion = BOOKINGS_VERSION; if (n) save(); });
       }
-    } else if (!window.FIREBASE_CONFIG && (state.seedVersion || 0) < SEED_VERSION) {
-      // 既存 localStorage ユーザー: シード更新分の過去シフトを追加取込（既存編集は保護）
-      const keepMonth = state.month;
-      seedHistoricalShifts({ skipIfHasData: true }).then((r) => {
-        state.seedVersion = SEED_VERSION;
-        state.month = keepMonth; // 既存ユーザーの表示月は変えない
-        ensureMonthScaffolding();
-        save();
-        renderAll();
-        if (r.imported) toast(`過去シフトを取り込みました: ${r.imported} セル（${(r.months || []).join(', ')}）`, 'success');
-      });
+    } else if (!window.FIREBASE_CONFIG) {
+      // 既存 localStorage ユーザー: シード更新分を差分取込（既存編集は保護）
+      if ((state.seedVersion || 0) < SEED_VERSION) {
+        const keepMonth = state.month;
+        seedHistoricalShifts({ skipIfHasData: true }).then((r) => {
+          state.seedVersion = SEED_VERSION;
+          state.month = keepMonth; // 既存ユーザーの表示月は変えない
+          ensureMonthScaffolding();
+          save();
+          renderAll();
+          if (r.imported) toast(`過去シフトを取り込みました: ${r.imported} セル（${(r.months || []).join(', ')}）`, 'success');
+        });
+      }
+      if ((state.bookingsVersion || 0) < BOOKINGS_VERSION) {
+        if (!state.bookings) state.bookings = {};
+        seedBookings().then((n) => {
+          state.bookingsVersion = BOOKINGS_VERSION;
+          save();
+          if (n) toast(`予約データを取り込みました（${n}日分）`, 'success');
+        });
+      }
     }
   }
   if (!window._eventsBound) {

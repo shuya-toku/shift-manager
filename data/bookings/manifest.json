@@ -1,0 +1,9 @@
+{
+  "_comment": "初回ロードでデフォルト取込する予約(onhand)CSV。data/bookings/ に置いて列挙する。全体合計行(全体,全体,新規予約数/販売数)を日次系列として使用。",
+  "files": [
+    "onhand_2026-02.csv",
+    "onhand_2026-03.csv",
+    "onhand_2026-04.csv",
+    "onhand_2026-05-06.csv"
+  ]
+}

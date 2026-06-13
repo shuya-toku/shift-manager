@@ -183,6 +183,28 @@
       }
       L.push('');
     }
+
+    // ---- 予約(onhand): 新規予約数=予約ボリューム / 販売数=稼働(売れた部屋数) ----
+    const bk = A.state.bookings || {};
+    const bkMonths = [...new Set(Object.keys(bk).map(d => d.slice(0, 7)))].sort();
+    if (bkMonths.length) {
+      const todayM = today.slice(0, 7);
+      L.push('# 予約(onhand) — 新規予約数=その日に入った予約(予約ボリューム) / 販売数=稼働(売れた部屋数)');
+      L.push('月 | 新規予約 平均/日 (計) | 販売(稼働) 平均/日');
+      for (const m of bkMonths) {
+        let res = 0, sold = 0, dres = 0, dsold = 0;
+        for (const d in bk) {
+          if (d.slice(0, 7) !== m) continue;
+          const b = bk[d];
+          if (b.res > 0) { res += b.res; dres++; }
+          if (b.sold > 0) { sold += b.sold; dsold++; }
+        }
+        const tag = m > todayM ? ' (来月以降=オンザブック/予約済み)' : (m === todayM ? ' (当月)' : '');
+        L.push(`${m}${tag} | ${dres ? Math.round(res / dres) : 0} (計${res}) | ${dsold ? Math.round(sold / dsold) : 0}`);
+      }
+      L.push('※来月以降の販売(稼働)は既に入っている予約(オンザブック)。新規予約・稼働が多い月/曜日ほどお問い合わせも増える前提で、来月の必要人員を考える。');
+      L.push('');
+    }
     return L.join('\n');
   }
 
