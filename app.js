@@ -54,6 +54,39 @@ const BOOKINGS_VERSION = 1;
 // 既定表示月（過去シフト取込後に最新の実績月へ寄せる。実績が無ければこの値）
 const DEFAULT_PLANNING_MONTH = '2026-05';
 
+// 従業員マスターのロール/退職状態の自動更新バージョン。EMPLOYEE_ROLE_UPDATES等を更新したら+1。
+// 既存 localStorage ユーザーにも一度だけ差分反映するためのマーカー(以後の手動編集は上書きしない)。
+const EMPLOYEE_UPDATE_VERSION = 1;
+// 2026-07 SQA Working Shift CSV(実績)を基準にしたロール更新。既存の兼任(Mgr/Night)タグは維持し、
+// CSVで役割が変わった/新規判明した人のみ反映(id: 新roles配列)。
+const EMPLOYEE_ROLE_UPDATES_2026_07 = {
+  '030': ['JP'],              // Ms.tomoko: Mgr → JP
+  '027': ['Mgr'],             // Ms.Ayumi: JP → MGR
+  '107': ['Night', 'Op(JP/EN)'], // Mr.Naho Kihara: JPをOp(JP/EN)に更新、Nightは維持
+  '023': ['Night', 'JP'],     // Mr.Rikinari: JPを追加、Nightは維持
+  '109': ['Night', 'JP'],     // Ms. Iayo Liu: JPを追加、Nightは維持
+  '015': ['Night', 'JP'],     // Mrs. Kyoko Yamashita: JPを追加、Nightは維持
+};
+// 2026-07 CSVに存在しない = 退職済みと判断
+const EMPLOYEE_RETIRED_2026_07 = ['055'];
+
+// 従業員のロール/退職フラグをCSV基準に差分反映(notes/targetDays等の手動編集は保持)
+function applyEmployeeRoleUpdates() {
+  let changed = false;
+  for (const e of state.employees) {
+    const newRoles = EMPLOYEE_ROLE_UPDATES_2026_07[e.id];
+    if (newRoles && JSON.stringify(e.roles || []) !== JSON.stringify(newRoles)) {
+      e.roles = newRoles.slice();
+      changed = true;
+    }
+    if (EMPLOYEE_RETIRED_2026_07.includes(e.id) && !e.retired) {
+      e.retired = true;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 // ---------- State ----------
 const state = {
   month: '2026-05',     // YYYY-MM
@@ -142,8 +175,9 @@ function migrateDemand() {
 function resetAll() {
   if (!confirm('全データをリセットしてシードデータに戻します。よろしいですか？')) return;
   localStorage.removeItem(STORAGE_KEY);
-  Object.assign(state, { month: '2026-05', employees: [], holidays: [], demand: {}, shift: {}, seedVersion: 0, bookings: {}, bookingsVersion: 0 });
+  Object.assign(state, { month: '2026-05', employees: [], holidays: [], demand: {}, shift: {}, seedVersion: 0, bookings: {}, bookingsVersion: 0, employeeUpdateVersion: 0 });
   seedInitialData();
+  state.employeeUpdateVersion = EMPLOYEE_UPDATE_VERSION;
   save();
   renderAll();
   // 過去シフト(data/history)＋予約(data/bookings)を再取込し、既定月を最新の実績月へ
@@ -207,14 +241,14 @@ function seedInitialData() {
     { id: '070', name: 'Ms. Chisato', nationality: 'JP', employment: 'PT', roles: ['JP'],       targetDays: 14, defaultStart: '07:00', defaultEnd: '13:00', defaultBreakMin: 0, workableDow: [1,2,4,5],     notes: '月火木金' },
     { id: '075', name: 'Ms. Haruna', nationality: 'JP', employment: 'PT', roles: ['JP'],        targetDays: 11, defaultStart: '13:00', defaultEnd: '21:00', defaultBreakMin: 60, workableDow: [0,1,2,3,4,5,6], notes: '' },
     { id: '008', name: 'Mr.Shuya', nationality: 'JP', employment: 'FT', roles: ['Mgr','JP'],    targetDays: 22, defaultStart: '09:00', defaultEnd: '18:00', defaultBreakMin: 60, workableDow: [0,1,2,3,4,5,6], notes: 'Mgr' },
-    { id: '030', name: 'Ms.tomoko', nationality: 'JP', employment: 'PT', roles: ['Mgr'],        targetDays: 12, defaultStart: '12:00', defaultEnd: '16:00', defaultBreakMin: 0, workableDow: [3,5],         notes: '水金 / 月90h程度' },
-    { id: '027', name: 'Ms.Ayumi', nationality: 'JP', employment: 'PT', roles: ['JP'],          targetDays: 11, defaultStart: '08:00', defaultEnd: '13:00', defaultBreakMin: 0, workableDow: [0,1,2,3,4,5,6], notes: '' },
+    { id: '030', name: 'Ms.tomoko', nationality: 'JP', employment: 'PT', roles: ['JP'],         targetDays: 12, defaultStart: '12:00', defaultEnd: '16:00', defaultBreakMin: 0, workableDow: [3,5],         notes: '水金 / 月90h程度' },
+    { id: '027', name: 'Ms.Ayumi', nationality: 'JP', employment: 'PT', roles: ['Mgr'],         targetDays: 11, defaultStart: '08:00', defaultEnd: '13:00', defaultBreakMin: 0, workableDow: [0,1,2,3,4,5,6], notes: '' },
     { id: '010', name: 'Ms.chikako', nationality: 'JP', employment: 'PT', roles: ['JP'],        targetDays: 13, defaultStart: '15:00', defaultEnd: '21:00', defaultBreakMin: 0, workableDow: [0,1,2,3,4,5,6], notes: '' },
     { id: '056', name: 'Mr. Koki Niwa', nationality: 'JP', employment: 'PT', roles: ['JP'],     targetDays: 12, defaultStart: '13:00', defaultEnd: '20:00', defaultBreakMin: 0, workableDow: [0,1,2,3,4,5,6], notes: '13時以降一日7時間 月90h前後' },
-    { id: '107', name: 'Mr.Naho Kihara', nationality: 'JP', employment: 'FT', roles: ['Night','JP'], targetDays: 22, defaultStart: '13:00', defaultEnd: '22:00', defaultBreakMin: 60, workableDow: [0,1,2,3,4,5,6], notes: 'Night兼任' },
-    { id: '023', name: 'Mr.Rikinari', nationality: 'JP', employment: 'PT', roles: ['Night'],    targetDays: 12, defaultStart: '20:00', defaultEnd: '24:00', defaultBreakMin: 0, workableDow: [1,2,3,4],     notes: '20-24, 週4, 60-80h, 土日祝NG' },
-    { id: '109', name: 'Ms. Iayo Liu', nationality: 'JP', employment: 'FT', roles: ['Night'],   targetDays: 22, defaultStart: '22:00', defaultEnd: '07:00', defaultBreakMin: 60, workableDow: [0,1,2,3,4,5,6], notes: '22-7深夜' },
-    { id: '015', name: 'Mrs. Kyoko Yamashita', nationality: 'JP', employment: 'FT', roles: ['Night'], targetDays: 22, defaultStart: '20:45', defaultEnd: '07:15', defaultBreakMin: 60, workableDow: [0,2,3,4,5,6], notes: '月曜後半NG' },
+    { id: '107', name: 'Mr.Naho Kihara', nationality: 'JP', employment: 'FT', roles: ['Night','Op(JP/EN)'], targetDays: 22, defaultStart: '13:00', defaultEnd: '22:00', defaultBreakMin: 60, workableDow: [0,1,2,3,4,5,6], notes: 'Night兼任' },
+    { id: '023', name: 'Mr.Rikinari', nationality: 'JP', employment: 'PT', roles: ['Night','JP'], targetDays: 12, defaultStart: '20:00', defaultEnd: '24:00', defaultBreakMin: 0, workableDow: [1,2,3,4],     notes: '20-24, 週4, 60-80h, 土日祝NG' },
+    { id: '109', name: 'Ms. Iayo Liu', nationality: 'JP', employment: 'FT', roles: ['Night','JP'], targetDays: 22, defaultStart: '22:00', defaultEnd: '07:00', defaultBreakMin: 60, workableDow: [0,1,2,3,4,5,6], notes: '22-7深夜' },
+    { id: '015', name: 'Mrs. Kyoko Yamashita', nationality: 'JP', employment: 'FT', roles: ['Night','JP'], targetDays: 22, defaultStart: '20:45', defaultEnd: '07:15', defaultBreakMin: 60, workableDow: [0,2,3,4,5,6], notes: '月曜後半NG' },
     // Cambodian
     { id: '004', name: 'Tak Sonita', nationality: 'KH', employment: 'FT', roles: ['Op(JP/EN)'],    targetDays: 22, defaultStart: '07:00', defaultEnd: '15:00', defaultBreakMin: 60, workableDow: [0,1,2,3,4,5,6], notes: '' },
     { id: '021', name: 'Meng Zeang', nationality: 'KH', employment: 'FT', roles: ['Mgr','Op(JP/EN)'], targetDays: 22, defaultStart: '07:00', defaultEnd: '16:00', defaultBreakMin: 60, workableDow: [0,1,2,3,4,5,6], notes: '' },
@@ -239,7 +273,7 @@ function seedInitialData() {
     { id: '083', name: 'Ms. Sok Chansreyroth', nationality: 'KH', employment: 'FT', roles: ['Op(EN)'],    targetDays: 22, defaultStart: '12:00', defaultEnd: '21:00', defaultBreakMin: 60, workableDow: [0,1,2,3,4,5,6], notes: '12-21' },
     { id: '081', name: 'Mr. Lun Socheath', nationality: 'KH', employment: 'PT', roles: ['Op(EN)','Night'], targetDays: 10, defaultStart: '18:00', defaultEnd: '22:00', defaultBreakMin: 0, workableDow: [0,1,2,3,4,5,6], notes: '18:30-22:30, 目安週6' },
     { id: '103', name: 'Ms. Kakada', nationality: 'KH', employment: 'FT', roles: ['DE'],           targetDays: 22, defaultStart: '08:00', defaultEnd: '17:00', defaultBreakMin: 60, workableDow: [0,1,2,3,4,5,6], notes: '8-17' },
-    { id: '055', name: 'NIM SREYNETH', nationality: 'KH', employment: 'FT', roles: ['DE'],         targetDays: 22, defaultStart: '07:00', defaultEnd: '16:00', defaultBreakMin: 60, workableDow: [0,1,2,3,4,5,6], notes: '(8:00AM-17:00pm)' },
+    { id: '055', name: 'NIM SREYNETH', nationality: 'KH', employment: 'FT', roles: ['DE'],         targetDays: 22, defaultStart: '07:00', defaultEnd: '16:00', defaultBreakMin: 60, workableDow: [0,1,2,3,4,5,6], notes: '(8:00AM-17:00pm)', retired: true },
     { id: '106', name: 'Ms. Thida', nationality: 'KH', employment: 'FT', roles: ['DE'],            targetDays: 22, defaultStart: '07:00', defaultEnd: '16:00', defaultBreakMin: 60, workableDow: [0,1,2,3,4,5,6], notes: '(7:00AM-16:00pm)' },
     { id: '054', name: 'Mouyeang', nationality: 'KH', employment: 'FT', roles: ['DE'],             targetDays: 22, defaultStart: '07:00', defaultEnd: '16:00', defaultBreakMin: 60, workableDow: [0,1,2,3,4,5,6], notes: '(Part time)' },
   ];
@@ -364,6 +398,7 @@ function init(opts = {}) {
       // Local-only mode: seed if no LocalStorage
       if (!window.FIREBASE_CONFIG) {
         seedInitialData();
+        state.employeeUpdateVersion = EMPLOYEE_UPDATE_VERSION;
         save();
         // 初回: data/history の過去シフトCSVを自動取込 → 既定月を最新の実績月へ
         seedHistoricalShifts().then((r) => {
@@ -396,6 +431,12 @@ function init(opts = {}) {
           save();
           if (n) toast(`予約データを取り込みました（${n}日分）`, 'success');
         });
+      }
+      if ((state.employeeUpdateVersion || 0) < EMPLOYEE_UPDATE_VERSION) {
+        const changed = applyEmployeeRoleUpdates();
+        state.employeeUpdateVersion = EMPLOYEE_UPDATE_VERSION;
+        save();
+        if (changed) toast('従業員ロール/退職状態を最新のシフト表(2026-07)基準に更新しました', 'success');
       }
     }
   }
@@ -448,7 +489,7 @@ function bindGlobalEvents() {
     const gaps = (state.gapReport || []).length;
     const ms = Date.now() - t0;
     // Compute FT target achievement stats
-    const ftStats = state.employees.filter(e => e.employment === 'FT').map(e => {
+    const ftStats = state.employees.filter(e => e.employment === 'FT' && !e.retired).map(e => {
       const w = monthDates().reduce((a, d) => a + (state.shift[d]?.[e.id]?.status === 'work' ? ((countsDouble(d) && e.employment === 'FT') ? 2 : 1) : 0), 0);
       return { target: e.targetDays, w };
     });
@@ -524,7 +565,7 @@ function ensureMonthScaffolding() {
 
 // ---------- Dashboard ----------
 function renderDashboard() {
-  document.getElementById('dash-emp-count').textContent = state.employees.length;
+  document.getElementById('dash-emp-count').textContent = state.employees.filter(e => !e.retired).length;
   // Total assigned working days this month
   let totalDays = 0;
   let ngCount = 0;
@@ -600,6 +641,7 @@ function renderEmployees() {
   tbody.innerHTML = '';
   for (const e of state.employees) {
     const tr = document.createElement('tr');
+    if (e.retired) tr.className = 'employee-retired';
     // ロールはチップのトグルで付け外し（クリックで追加/解除）
     const rolesHtml = ROLES.map(r => {
       const on = (e.roles || []).includes(r);
@@ -613,9 +655,13 @@ function renderEmployees() {
       ? `<small style="color:#6b7280; display:block">${e.targetHours != null ? `目標${e.targetHours}h` : ''}${e.maxHours != null ? ` 上限${e.maxHours}h` : ''}</small>`
       : '';
     const targetCell = dayCell + hoursCell;
+    const statusCell = e.retired
+      ? `<span class="tag retired">退職済み</span>`
+      : `<span class="tag active">在籍</span>`;
     tr.innerHTML = `
       <td>${escapeHtml(e.id)}</td>
       <td>${escapeHtml(e.name)}</td>
+      <td>${statusCell}</td>
       <td><span class="tag ${e.nationality === 'JP' ? 'jp' : 'kh'}">${e.nationality}</span></td>
       <td><span class="tag ${e.employment === 'FT' ? 'ft' : 'pt'}">${e.employment}</span></td>
       <td class="role-cell">${rolesHtml}</td>
@@ -626,6 +672,7 @@ function renderEmployees() {
       <td>${escapeHtml(e.notes || '')}</td>
       <td class="actions-cell">
         <button data-id="${e.id}" class="edit">編集</button>
+        <button data-id="${e.id}" class="toggle-retired">${e.retired ? '在籍に戻す' : '退職済みにする'}</button>
         <button data-id="${e.id}" class="del">削除</button>
       </td>
     `;
@@ -633,6 +680,12 @@ function renderEmployees() {
   }
   tbody.querySelectorAll('button.edit').forEach(b => b.addEventListener('click', () => openEmployeeModal(b.dataset.id)));
   tbody.querySelectorAll('button.del').forEach(b => b.addEventListener('click', () => deleteEmployee(b.dataset.id)));
+  tbody.querySelectorAll('button.toggle-retired').forEach(b => b.addEventListener('click', () => {
+    const emp = state.employees.find(x => x.id === b.dataset.id);
+    if (!emp) return;
+    emp.retired = !emp.retired;
+    save(); renderEmployees(); renderShift();
+  }));
   // ロールのトグル（その場で追加/解除して保存。重い全体再描画はしない）
   tbody.querySelectorAll('.role-toggle').forEach(btn => btn.addEventListener('click', () => {
     const emp = state.employees.find(x => x.id === btn.dataset.id);
@@ -1116,7 +1169,8 @@ function renderShift() {
     const trBreak = document.createElement('tr');
     trBreak.className = 'row-break';
 
-    trIn.innerHTML = `<td class="name-col" rowspan="3">${escapeHtml(e.name)}<br><small style="color:#6b7280">${e.id} / ${e.nationality} / ${e.employment}</small></td>`;
+    const retiredBadge = e.retired ? ` <span class="tag retired">退職済み</span>` : '';
+    trIn.innerHTML = `<td class="name-col${e.retired ? ' employee-retired' : ''}" rowspan="3">${escapeHtml(e.name)}${retiredBadge}<br><small style="color:#6b7280">${e.id} / ${e.nationality} / ${e.employment}</small></td>`;
     let workDays = 0;
     let workHours = 0;
     for (const date of dates) {
@@ -1801,6 +1855,7 @@ function autoAssign() {
   // 4. Pre-compute potential candidates for each slot
   for (const slot of slots) {
     slot.potential = state.employees.filter(e => {
+      if (e.retired) return false;
       const roles = e.roles || [];
       if (!slot.allowedRoles.some(r => roles.includes(r))) return false;
       const dow = getDow(slot.date);
@@ -1859,6 +1914,7 @@ function autoAssign() {
   //     on dates they can work (respecting NG/AL/OFF/dow/consec/rest/caps). Considers BOTH
   //     targetDays AND targetHours; pads while either is below target. Stops at maxDays/maxHours.
   for (const e of state.employees) {
+    if (e.retired) continue;
     const hasHourTarget = e.targetHours != null && e.targetHours > 0;
     const hasDayTarget = (e.targetDays || 0) > 0;
     if (!hasHourTarget && !hasDayTarget) continue;
@@ -1922,7 +1978,7 @@ function autoAssign() {
       ];
       for (const chk of checks) {
         for (let i = 0; i < chk.short; i++) {
-          const fakeSlot = { date, band: b, kind: chk.kind, allowedRoles: chk.allowedRoles, idx: i, potential: state.employees.filter(e => chk.allowedRoles.some(r => (e.roles || []).includes(r))) };
+          const fakeSlot = { date, band: b, kind: chk.kind, allowedRoles: chk.allowedRoles, idx: i, potential: state.employees.filter(e => !e.retired && chk.allowedRoles.some(r => (e.roles || []).includes(r))) };
           finalGaps.push({ slot: fakeSlot, reason: explainGap(fakeSlot, tracker) });
         }
       }
@@ -2072,7 +2128,7 @@ function explainGap(slot, tracker) {
   const date = slot.date;
   const band = slot.band;
   const allowed = slot.allowedRoles;
-  const allRoleHolders = state.employees.filter(e => allowed.some(r => (e.roles || []).includes(r)));
+  const allRoleHolders = state.employees.filter(e => !e.retired && allowed.some(r => (e.roles || []).includes(r)));
   const roleLabel = allowed.length === 1 ? allowed[0] : `${allowed.join('/')}`;
   if (allRoleHolders.length === 0) return `ロール「${roleLabel}」を持つ従業員がいません`;
   let dowOk = 0, statusBlock = 0, targetExhausted = 0, consecBlock = 0, restBlock = 0, patternMiss = 0, sameDayBusy = 0;

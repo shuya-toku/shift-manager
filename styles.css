@@ -155,6 +155,13 @@ input, select, textarea { font-family: inherit; font-size: 13px; }
 .tag.role-op-jpen { background: #cffafe; color: #155e75; }
 .tag.role-op-en { background: #fce7f3; color: #9d174d; }
 .tag.role-night { background: #1f2937; color: white; }
+.tag.active { background: #dcfce7; color: #166534; }
+.tag.retired { background: #e5e7eb; color: #6b7280; font-weight: 600; }
+
+/* Retired employees: dim + strike-through name for at-a-glance status */
+tr.employee-retired { opacity: 0.55; }
+tr.employee-retired td { font-style: italic; }
+.shift-table td.name-col.employee-retired { opacity: 0.6; }
 
 .badge {
   display: inline-block;
