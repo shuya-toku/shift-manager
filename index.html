@@ -53,6 +53,7 @@
     <aside class="sidebar">
       <button class="tab nav-item" data-tab="dashboard">📊 ダッシュボード</button>
       <button class="tab nav-item" data-tab="staffing-fit">⚖️ 人員整合性</button>
+      <button class="tab nav-item" data-tab="weekly-staffing">📅 週次稼働レポート</button>
 
       <div class="nav-group" data-pillar="shift">
         <div class="nav-group-head">🗓 シフト管理</div>
@@ -264,6 +265,39 @@
       <div id="sf-summary"></div>
     </section>
 
+    <!-- 週次シフト稼働可視化 (TSK-103 v1) -->
+    <section class="view" data-view="weekly-staffing">
+      <div class="view-header">
+        <h2>週次稼働レポート <span class="hint" style="font-weight:400">— 実人数 vs 想定人数・翌週プラン・夜間アラート (TSK-103)</span></h2>
+        <button id="ws-reload">再取得</button>
+      </div>
+      <div id="ws-status" class="hint"></div>
+      <div id="ws-header-kpi" class="dash-grid"></div>
+
+      <h3 class="sf-h3">① 当週ふりかえり — 時間帯×曜日ギャップ（実−想定）</h3>
+      <p class="hint">不足=赤／過剰=青／適正=白。⚠=その時間帯にMissed発生。</p>
+      <div class="table-wrap" id="ws-heatmap-wrap"></div>
+
+      <h3 class="sf-h3">② 翌週プラン — シフト予定/理論値</h3>
+      <p class="hint">需要予測＝直近4週の同(曜日×バンド)実績を4:3:2:1で加重平均→A案(需要÷キャパ)で人数化。</p>
+      <div class="table-wrap" id="ws-next-wrap"></div>
+      <div id="ws-next-list"></div>
+
+      <h3 class="sf-h3">③ 夜間アラート（21-02 + 02-04）</h3>
+      <div id="ws-night-alerts"></div>
+
+      <h3 class="sf-h3">🔧 キャパ推定値（レビュー用）</h3>
+      <div class="table-wrap" id="ws-cap-wrap"></div>
+
+      <h3 class="sf-h3">④ 補正・アクション台帳（手動記入）</h3>
+      <div class="card" style="margin-bottom:12px">
+        <h3>祝日・イベント補正メモ（週初にShuyaが入力／この端末のみ保存）</h3>
+        <textarea id="ws-holiday-note" rows="2" style="width:100%" placeholder="例: 7/14 KH祝日のため夜間ボリューム減見込み"></textarea>
+      </div>
+      <div id="ws-ledger-wrap"></div>
+      <button id="ws-ledger-add" class="btn-primary" style="margin-top:8px">＋ 台帳に行を追加</button>
+    </section>
+
     <!-- お問い合わせ分析: 概況サマリ -->
     <section class="view" data-view="inquiry-overview">
       <div class="view-header">
@@ -328,6 +362,7 @@
   <script src="cloud.js"></script>
   <script src="history.js"></script>
   <script src="volume.js"></script>
+  <script src="weekly-staffing.js"></script>
   <script src="inquiry.js"></script>
   <script src="nav.js"></script>
   <script src="context-bar.js"></script>

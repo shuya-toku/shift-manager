@@ -193,6 +193,15 @@ input, select, textarea { font-family: inherit; font-size: 13px; }
 /* Summary col */
 .shift-table .summary-col { background: #f3f4f6; font-weight: 600; }
 
+/* Role hour-summary rows (above per-employee rows) */
+.shift-table tbody tr.row-role-summary td { background: #f8fafc; font-weight: 700; }
+.shift-table tbody tr.row-role-summary:last-child td { border-bottom: 2px solid #9ca3af; }
+.shift-table tbody tr.row-role-summary td.name-col.role-jp { background: #dbeafe; color: #1e40af; }
+.shift-table tbody tr.row-role-summary td.name-col.role-op-jpen { background: #cffafe; color: #155e75; }
+.shift-table tbody tr.row-role-summary td.name-col.role-op-en { background: #fce7f3; color: #9d174d; }
+.shift-table tbody tr.row-role-summary td.name-col.role-night { background: #1f2937; color: #fff; }
+.shift-table tbody tr.row-role-summary td.name-col.role-optotal { background: #e0e7ff; color: #3730a3; }
+
 /* Demand table */
 .demand-table { border-collapse: separate; border-spacing: 0; font-size: 11px; }
 .demand-table th, .demand-table td { border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 4px; text-align: center; }

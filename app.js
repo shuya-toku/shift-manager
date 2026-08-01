@@ -487,6 +487,8 @@ function switchTab(tab) {
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.dataset.view === tab));
   // 人員整合性タブはSupabaseから非同期で読むため、表示時に遅延レンダリング
   if (tab === 'staffing-fit' && window.StaffingFit) window.StaffingFit.render();
+  // 週次稼働レポート(TSK-103)も同様にSupabase直読み
+  if (tab === 'weekly-staffing' && window.WeeklyStaffing) window.WeeklyStaffing.render();
   // お問い合わせ分析タブ(Supabase直読み)も表示時に遅延レンダリング
   if (tab && tab.indexOf('inquiry-') === 0 && window.InquiryAnalysis) window.InquiryAnalysis.render(tab);
   // ナビ後処理(アクション表示の文脈切替など)
@@ -1086,6 +1088,27 @@ function renderShift() {
   table.appendChild(thead);
 
   const tbody = document.createElement('tbody');
+
+  for (const row of SHIFT_SUMMARY_ROWS) {
+    const trSum = document.createElement('tr');
+    trSum.className = 'row-role-summary';
+    let monthTotal = 0;
+    let html = `<td class="name-col ${row.cls}">${row.label}</td>`;
+    for (const date of dates) {
+      const hours = row.role === 'opTotal'
+        ? roleHoursForDate(date, 'Op(JP/EN)') + roleHoursForDate(date, 'Op(EN)')
+        : roleHoursForDate(date, row.role);
+      monthTotal += hours;
+      const dow = getDow(date);
+      const isHol = isSunday(date) || isKHHoliday(date) || isJPHoliday(date);
+      const dayCls = isHol ? 'sun' : (dow === 6 ? 'sat' : '');
+      html += `<td class="${dayCls}">${hours ? hours.toFixed(1) : ''}</td>`;
+    }
+    html += `<td class="summary-col">–</td><td class="summary-col">${monthTotal.toFixed(1)}</td>`;
+    trSum.innerHTML = html;
+    tbody.appendChild(trSum);
+  }
+
   for (const e of state.employees) {
     // 3 rows per employee: IN, OUT, BREAK/STATUS
     const trIn = document.createElement('tr');
@@ -1155,6 +1178,56 @@ function calcShiftHoursFromPattern(p) {
   const breakMin = p.breakMin || 0;
   return Math.max(0, (e - s - breakMin) / 60);
 }
+
+// Splits a (possibly overnight) shift's net hours into the portion that falls on
+// its own date ("day") vs the portion that spills into the next date ("next").
+// 夜勤の休憩は0時以降に発生する前提で、休憩は常に next(日跨ぎ後)側から差し引く。
+function splitShiftHours(cell) {
+  if (cell.status !== STATUS.WORK) return { day: 0, next: 0 };
+  const s = timeToMin(cell.start);
+  const e = timeToMin(cell.end);
+  if (s == null || e == null) return { day: 0, next: 0 };
+  const breakMin = cell.breakMin || 0;
+  if (e > s) return { day: Math.max(0, (e - s - breakMin) / 60), next: 0 };
+  // 日を跨ぐシフト（例: 21:00-07:00）
+  const day = (24 * 60 - s) / 60;
+  const next = Math.max(0, e - breakMin) / 60;
+  return { day, next };
+}
+
+// 指定ロールの、指定日における実働合計時間（前日からの日跨ぎシフトの翌日分を含む）
+function roleHoursForDate(date, role) {
+  let total = 0;
+  const day = state.shift[date] || {};
+  for (const empId in day) {
+    const cell = day[empId];
+    if (cell.status !== STATUS.WORK) continue;
+    const emp = state.employees.find(e => e.id === empId);
+    if (!emp || !(emp.roles || []).includes(role)) continue;
+    total += splitShiftHours(cell).day;
+  }
+  const prev = addDays(date, -1);
+  if (prev) {
+    const prevDay = state.shift[prev] || {};
+    for (const empId in prevDay) {
+      const cell = prevDay[empId];
+      if (cell.status !== STATUS.WORK) continue;
+      const emp = state.employees.find(e => e.id === empId);
+      if (!emp || !(emp.roles || []).includes(role)) continue;
+      total += splitShiftHours(cell).next;
+    }
+  }
+  return total;
+}
+
+// シフト表上部のロール別合計時間サマリー行の定義（Mgr/DEは除外、Opは2ロール合計行を追加）
+const SHIFT_SUMMARY_ROWS = [
+  { role: 'JP',         label: 'JP計',              cls: 'role-jp' },
+  { role: 'Op(JP/EN)',  label: 'Op(JP/EN)計',       cls: 'role-op-jpen' },
+  { role: 'Op(EN)',     label: 'Op(EN)計',          cls: 'role-op-en' },
+  { role: 'opTotal',    label: 'Op計(2ロール合計)',  cls: 'role-optotal' },
+  { role: 'Night',      label: 'Night計',           cls: 'role-night' },
+];
 
 function openCellEditor(date, empId) {
   const emp = state.employees.find(e => e.id === empId);
