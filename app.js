@@ -498,6 +498,7 @@ function bindGlobalEvents() {
     toast(`自動アサイン完了 (${ms}ms) — 不足${gaps}枠 / FT目標達成 ${ftHit}/${ftTotal}名`, gaps ? '' : 'success');
   });
   document.getElementById('btn-csv-export').addEventListener('click', exportCSV);
+  document.getElementById('btn-role-hours-export').addEventListener('click', openRoleHoursExportModal);
   document.getElementById('btn-csv-import').addEventListener('click', () => document.getElementById('csv-file-input').click());
   document.getElementById('csv-file-input').addEventListener('change', importCSV);
 
@@ -2302,6 +2303,111 @@ function csvEscape(v) {
   const s = String(v);
   if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
   return s;
+}
+
+// ---------- Role-hours CSV export (期間指定) ----------
+function todayKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+// 直近の「完全に終わった月-日の週」(今日が月曜なら先週月曜〜昨日の日曜)
+function lastFullWeekRange() {
+  const today = todayKey();
+  const dow = getDow(today);
+  const daysSinceMonday = dow === 0 ? 6 : dow - 1;
+  const thisWeekMonday = addDays(today, -daysSinceMonday);
+  const lastWeekMonday = addDays(thisWeekMonday, -7);
+  const lastWeekSunday = addDays(lastWeekMonday, 6);
+  return { start: lastWeekMonday, end: lastWeekSunday };
+}
+
+function dateRangeArray(start, end) {
+  const out = [];
+  let d = start;
+  let guard = 0;
+  while (d <= end && guard < 731) { // 最大2年分でガード
+    out.push(d);
+    d = addDays(d, 1);
+    guard++;
+  }
+  return out;
+}
+
+function openRoleHoursExportModal() {
+  const lastWeek = lastFullWeekRange();
+  const monthStart = `${state.month}-01`;
+  const monthEnd = dateKey(state.month, daysInMonth(state.month));
+  showModal('稼働時間CSV出力(期間指定)', `
+    <p class="hint">シフト表上部のロール別稼働時間サマリー(JP計/Op計/Night計など)を、指定した期間のCSVで出力します。</p>
+    <div class="form-row"><label>開始日</label><input type="date" id="rh-start" value="${lastWeek.start}" /></div>
+    <div class="form-row"><label>終了日</label><input type="date" id="rh-end" value="${lastWeek.end}" /></div>
+    <div class="form-row"><label>クイック選択</label>
+      <div class="checks">
+        <button type="button" id="rh-preset-lastweek">先週(月〜日)</button>
+        <button type="button" id="rh-preset-month">対象月(${state.month})</button>
+      </div>
+    </div>
+    <p class="hint" id="rh-range-info"></p>
+  `, () => {
+    const start = document.getElementById('rh-start').value;
+    const end = document.getElementById('rh-end').value;
+    if (!start || !end) { toast('開始日と終了日を指定してください', 'error'); return false; }
+    if (end < start) { toast('終了日は開始日以降にしてください', 'error'); return false; }
+    exportRoleHoursCSV(start, end);
+    return true;
+  }, () => {
+    const startInp = document.getElementById('rh-start');
+    const endInp = document.getElementById('rh-end');
+    const info = document.getElementById('rh-range-info');
+    const updateInfo = () => {
+      if (startInp.value && endInp.value && endInp.value >= startInp.value) {
+        info.textContent = `${dateRangeArray(startInp.value, endInp.value).length}日分を出力します`;
+      } else {
+        info.textContent = '';
+      }
+    };
+    updateInfo();
+    startInp.addEventListener('input', updateInfo);
+    endInp.addEventListener('input', updateInfo);
+    document.getElementById('rh-preset-lastweek').addEventListener('click', () => {
+      const r = lastFullWeekRange();
+      startInp.value = r.start; endInp.value = r.end; updateInfo();
+    });
+    document.getElementById('rh-preset-month').addEventListener('click', () => {
+      startInp.value = monthStart; endInp.value = monthEnd; updateInfo();
+    });
+  });
+}
+
+function exportRoleHoursCSV(startDate, endDate) {
+  const dates = dateRangeArray(startDate, endDate);
+  if (!dates.length) { toast('期間が不正です', 'error'); return; }
+  const rows = [];
+  rows.push([`ロール別稼働時間 ${startDate} 〜 ${endDate}`]);
+  rows.push(['ロール', ...dates.map(d => `${d}(${DOW_LABELS_EN[getDow(d)]})`), '期間合計']);
+  for (const row of SHIFT_SUMMARY_ROWS) {
+    const line = [row.label];
+    let total = 0;
+    for (const d of dates) {
+      const h = row.hours(d);
+      total += h;
+      line.push(h ? h.toFixed(1) : '0');
+    }
+    line.push(total.toFixed(1));
+    rows.push(line);
+  }
+  const csv = rows.map(r => r.map(c => csvEscape(c)).join(',')).join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `role-hours_${startDate}_${endDate}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast(`CSVをダウンロードしました（${dates.length}日分）`, 'success');
 }
 
 function importCSV(ev) {
