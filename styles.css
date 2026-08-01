@@ -201,6 +201,7 @@ input, select, textarea { font-family: inherit; font-size: 13px; }
 .shift-table tbody tr.row-role-summary td.name-col.role-op-en { background: #fce7f3; color: #9d174d; }
 .shift-table tbody tr.row-role-summary td.name-col.role-night { background: #1f2937; color: #fff; }
 .shift-table tbody tr.row-role-summary td.name-col.role-optotal { background: #e0e7ff; color: #3730a3; }
+.shift-table tbody tr.row-role-summary td.name-col.role-jpoptotal { background: #c7d2fe; color: #312e81; }
 
 /* Demand table */
 .demand-table { border-collapse: separate; border-spacing: 0; font-size: 11px; }

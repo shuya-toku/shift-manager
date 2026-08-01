@@ -1095,9 +1095,7 @@ function renderShift() {
     let monthTotal = 0;
     let html = `<td class="name-col ${row.cls}">${row.label}</td>`;
     for (const date of dates) {
-      const hours = row.role === 'opTotal'
-        ? roleHoursForDate(date, 'Op(JP/EN)') + roleHoursForDate(date, 'Op(EN)')
-        : roleHoursForDate(date, row.role);
+      const hours = row.hours(date);
       monthTotal += hours;
       const dow = getDow(date);
       const isHol = isSunday(date) || isKHHoliday(date) || isJPHoliday(date);
@@ -1220,13 +1218,42 @@ function roleHoursForDate(date, role) {
   return total;
 }
 
-// シフト表上部のロール別合計時間サマリー行の定義（Mgr/DEは除外、Opは2ロール合計行を追加）
+// Night専用: 22:00-05:00の深夜帯にクリップした実働時間。
+// 「その夜」の開始日(=シフトのstartがある日)に計上する(日跨ぎで前日/翌日に分割しない)。
+// 休憩は0時以降(帯域内なら)にあるものとして、帯域とオーバーラップする分だけ差し引く。
+function nightBandHoursForDate(date) {
+  const BAND_START = 22 * 60;      // 22:00
+  const BAND_END = (24 + 5) * 60;  // 翌05:00
+  let total = 0;
+  const day = state.shift[date] || {};
+  for (const empId in day) {
+    const cell = day[empId];
+    if (cell.status !== STATUS.WORK) continue;
+    const emp = state.employees.find(e => e.id === empId);
+    if (!emp || !(emp.roles || []).includes('Night')) continue;
+    const s = timeToMin(cell.start);
+    let e = timeToMin(cell.end);
+    if (s == null || e == null) continue;
+    if (e <= s) e += 24 * 60; // overnight
+    const overlapStart = Math.max(s, BAND_START);
+    const overlapEnd = Math.min(e, BAND_END);
+    if (overlapEnd <= overlapStart) continue;
+    const breakMin = cell.breakMin || 0;
+    const postMidnightOverlap = Math.max(0, overlapEnd - Math.max(overlapStart, 24 * 60));
+    const breakToApply = Math.min(breakMin, postMidnightOverlap);
+    total += Math.max(0, overlapEnd - overlapStart - breakToApply) / 60;
+  }
+  return total;
+}
+
+// シフト表上部のロール別合計時間サマリー行の定義（Mgr/DEは除外、Opは2ロール合計・JP+OP合計行を追加）
 const SHIFT_SUMMARY_ROWS = [
-  { role: 'JP',         label: 'JP計',              cls: 'role-jp' },
-  { role: 'Op(JP/EN)',  label: 'Op(JP/EN)計',       cls: 'role-op-jpen' },
-  { role: 'Op(EN)',     label: 'Op(EN)計',          cls: 'role-op-en' },
-  { role: 'opTotal',    label: 'Op計(2ロール合計)',  cls: 'role-optotal' },
-  { role: 'Night',      label: 'Night計',           cls: 'role-night' },
+  { label: 'JP計',                cls: 'role-jp',       hours: date => roleHoursForDate(date, 'JP') },
+  { label: 'Op(JP/EN)計',        cls: 'role-op-jpen',  hours: date => roleHoursForDate(date, 'Op(JP/EN)') },
+  { label: 'Op(EN)計',           cls: 'role-op-en',    hours: date => roleHoursForDate(date, 'Op(EN)') },
+  { label: 'Op計(2ロール合計)',   cls: 'role-optotal',  hours: date => roleHoursForDate(date, 'Op(JP/EN)') + roleHoursForDate(date, 'Op(EN)') },
+  { label: 'JP+OP計(3ロール合計)', cls: 'role-jpoptotal', hours: date => roleHoursForDate(date, 'JP') + roleHoursForDate(date, 'Op(JP/EN)') + roleHoursForDate(date, 'Op(EN)') },
+  { label: 'Night計(22-05)',     cls: 'role-night',    hours: date => nightBandHoursForDate(date) },
 ];
 
 function openCellEditor(date, empId) {
