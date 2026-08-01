@@ -499,6 +499,11 @@ function bindGlobalEvents() {
   });
   document.getElementById('btn-csv-export').addEventListener('click', exportCSV);
   document.getElementById('btn-role-hours-export').addEventListener('click', openRoleHoursExportModal);
+  document.getElementById('btn-toggle-summary-rows').addEventListener('click', (ev) => {
+    summaryRowsCollapsed = !summaryRowsCollapsed;
+    ev.target.textContent = summaryRowsCollapsed ? '▶ 合計数を表示' : '▼ 合計数を隠す';
+    renderShift();
+  });
   document.getElementById('btn-csv-import').addEventListener('click', () => document.getElementById('csv-file-input').click());
   document.getElementById('csv-file-input').addEventListener('change', importCSV);
 
@@ -531,6 +536,8 @@ function switchTab(tab) {
   if (tab === 'staffing-fit' && window.StaffingFit) window.StaffingFit.render();
   // 週次稼働レポート(TSK-103)も同様にSupabase直読み
   if (tab === 'weekly-staffing' && window.WeeklyStaffing) window.WeeklyStaffing.render();
+  // シフト表タブ表示時: 非表示中は高さ0で計算できないため、表示後に固定オフセットを再計算
+  if (tab === 'shift') applyShiftStickyOffsets();
   // お問い合わせ分析タブ(Supabase直読み)も表示時に遅延レンダリング
   if (tab && tab.indexOf('inquiry-') === 0 && window.InquiryAnalysis) window.InquiryAnalysis.render(tab);
   // ナビ後処理(アクション表示の文脈切替など)
@@ -1121,6 +1128,8 @@ function openFillDemandModal() {
 }
 
 // ---------- Shift Editor ----------
+let summaryRowsCollapsed = false;
+
 function renderShift() {
   const wrap = document.getElementById('shift-table-wrap');
   wrap.innerHTML = '';
@@ -1143,22 +1152,24 @@ function renderShift() {
 
   const tbody = document.createElement('tbody');
 
-  for (const row of SHIFT_SUMMARY_ROWS) {
-    const trSum = document.createElement('tr');
-    trSum.className = 'row-role-summary';
-    let monthTotal = 0;
-    let html = `<td class="name-col ${row.cls}">${row.label}</td>`;
-    for (const date of dates) {
-      const hours = row.hours(date);
-      monthTotal += hours;
-      const dow = getDow(date);
-      const isHol = isSunday(date) || isKHHoliday(date) || isJPHoliday(date);
-      const dayCls = isHol ? 'sun' : (dow === 6 ? 'sat' : '');
-      html += `<td class="${dayCls}">${hours ? hours.toFixed(1) : ''}</td>`;
+  if (!summaryRowsCollapsed) {
+    for (const row of SHIFT_SUMMARY_ROWS) {
+      const trSum = document.createElement('tr');
+      trSum.className = 'row-role-summary';
+      let monthTotal = 0;
+      let html = `<td class="name-col ${row.cls}">${row.label}</td>`;
+      for (const date of dates) {
+        const hours = row.hours(date);
+        monthTotal += hours;
+        const dow = getDow(date);
+        const isHol = isSunday(date) || isKHHoliday(date) || isJPHoliday(date);
+        const dayCls = isHol ? 'sun' : (dow === 6 ? 'sat' : '');
+        html += `<td class="${dayCls}">${hours ? hours.toFixed(1) : ''}</td>`;
+      }
+      html += `<td class="summary-col">–</td><td class="summary-col">${monthTotal.toFixed(1)}</td>`;
+      trSum.innerHTML = html;
+      tbody.appendChild(trSum);
     }
-    html += `<td class="summary-col">–</td><td class="summary-col">${monthTotal.toFixed(1)}</td>`;
-    trSum.innerHTML = html;
-    tbody.appendChild(trSum);
   }
 
   for (const e of state.employees) {
@@ -1215,6 +1226,23 @@ function renderShift() {
   // Bind clicks
   wrap.querySelectorAll('td.editable').forEach(td => {
     td.addEventListener('click', () => openCellEditor(td.dataset.date, td.dataset.emp));
+  });
+
+  applyShiftStickyOffsets();
+}
+
+// 日付行(thead)の下に、ロール別集計行(row-role-summary)を積み上げでスクロール固定表示する。
+// タブが非表示(display:none)だと高さが0で取得されてしまうため、シフトタブ表示時にも呼び直す。
+function applyShiftStickyOffsets() {
+  const wrap = document.getElementById('shift-table-wrap');
+  const theadTr = wrap?.querySelector('thead tr');
+  if (!theadTr) return;
+  let offset = theadTr.getBoundingClientRect().height;
+  if (!offset) return; // タブ非表示などで高さが取れない場合は諦める(タブ表示時に再計算される)
+  wrap.querySelectorAll('tbody tr.row-role-summary').forEach(tr => {
+    const h = tr.getBoundingClientRect().height;
+    Array.from(tr.children).forEach(td => { td.style.top = offset + 'px'; });
+    offset += h;
   });
 }
 
@@ -1277,27 +1305,42 @@ function roleHoursForDate(date, role) {
 // 「その夜」の開始日(=シフトのstartがある日)に計上する(日跨ぎで前日/翌日に分割しない)。
 // 休憩は0時以降(帯域内なら)にあるものとして、帯域とオーバーラップする分だけ差し引く。
 function nightBandHoursForDate(date) {
-  const BAND_START = 22 * 60;      // 22:00
-  const BAND_END = (24 + 5) * 60;  // 翌05:00
+  // Nightの定義: ロールタグに関係なく、全従業員の実働時間のうち22:00-05:00に
+  // かかる分の総時間。日をまたぐシフトは「当日22-24時分」と「翌日0-5時分」に
+  // 分けて計上する(前者は休憩を引かない、後者は休憩を0時以降として全額差し引く)。
   let total = 0;
-  const day = state.shift[date] || {};
-  for (const empId in day) {
-    const cell = day[empId];
+
+  // 1. 当日シフトの22:00-24:00分
+  const today = state.shift[date] || {};
+  for (const empId in today) {
+    const cell = today[empId];
     if (cell.status !== STATUS.WORK) continue;
-    const emp = state.employees.find(e => e.id === empId);
-    if (!emp || !(emp.roles || []).includes('Night')) continue;
     const s = timeToMin(cell.start);
     let e = timeToMin(cell.end);
     if (s == null || e == null) continue;
     if (e <= s) e += 24 * 60; // overnight
-    const overlapStart = Math.max(s, BAND_START);
-    const overlapEnd = Math.min(e, BAND_END);
-    if (overlapEnd <= overlapStart) continue;
-    const breakMin = cell.breakMin || 0;
-    const postMidnightOverlap = Math.max(0, overlapEnd - Math.max(overlapStart, 24 * 60));
-    const breakToApply = Math.min(breakMin, postMidnightOverlap);
-    total += Math.max(0, overlapEnd - overlapStart - breakToApply) / 60;
+    const overlapStart = Math.max(s, 22 * 60);
+    const overlapEnd = Math.min(e, 24 * 60);
+    if (overlapEnd > overlapStart) total += (overlapEnd - overlapStart) / 60;
   }
+
+  // 2. 前日シフトが日をまたいで当日0:00-05:00に食い込む分
+  const prev = addDays(date, -1);
+  const prevDay = prev ? (state.shift[prev] || {}) : {};
+  for (const empId in prevDay) {
+    const cell = prevDay[empId];
+    if (cell.status !== STATUS.WORK) continue;
+    const s = timeToMin(cell.start);
+    let e = timeToMin(cell.end);
+    if (s == null || e == null) continue;
+    if (e <= s) e += 24 * 60; // overnight
+    if (e <= 24 * 60) continue; // 日をまたいでいない
+    const overlapEnd = Math.min(e, (24 + 5) * 60);
+    if (overlapEnd <= 24 * 60) continue;
+    const breakMin = cell.breakMin || 0;
+    total += Math.max(0, (overlapEnd - 24 * 60) - breakMin) / 60;
+  }
+
   return total;
 }
 
