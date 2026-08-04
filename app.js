@@ -1276,71 +1276,85 @@ function splitShiftHours(cell) {
   return { day, next };
 }
 
-// 指定ロールの、指定日における実働合計時間（前日からの日跨ぎシフトの翌日分を含む）
+// ICT(カンボジア時間, UTC+7) → JST(日本時間, UTC+9)換算。ICT 22:00 = JST 翌日00:00。
+// シフト表の入力(start/end)はICT基準のまま保持し、サマリー行の集計だけJST基準の
+// 日付・時刻に変換してから計上する。休憩時間(breakMin)は経過時間なのでTZ変換で変わらない。
+function campToJstShift(cell) {
+  const s = timeToMin(cell.start);
+  let eRaw = timeToMin(cell.end);
+  if (s == null || eRaw == null) return null;
+  const crossesIct = eRaw <= s;
+  const e = eRaw + (crossesIct ? 24 * 60 : 0); // ICT基準のグロス終了(分)
+  const duration = e - s;
+  const jstStartClock = (s + 120) % (24 * 60);
+  const dateOffset = Math.floor((s + 120) / (24 * 60)); // 0 or 1: ICT開始時刻がJSTで翌日にずれるか
+  const jstEndClock = (jstStartClock + duration) % (24 * 60);
+  return { dateOffset, start: minToTime(jstStartClock), end: minToTime(jstEndClock), breakMin: cell.breakMin || 0 };
+}
+
+// 指定ロールの、指定日(JST基準)における実働合計時間。
+// ICT→JST変換でシフトの開始日がICT側から見て±1日ずれることがあるため、対象日(date)に
+// 乗り得る元データの日付は date / date-1 / date-2 の3つをチェックする。
 function roleHoursForDate(date, role) {
   let total = 0;
-  const day = state.shift[date] || {};
-  for (const empId in day) {
-    const cell = day[empId];
-    if (cell.status !== STATUS.WORK) continue;
-    const emp = state.employees.find(e => e.id === empId);
-    if (!emp || !(emp.roles || []).includes(role)) continue;
-    total += splitShiftHours(cell).day;
-  }
-  const prev = addDays(date, -1);
-  if (prev) {
-    const prevDay = state.shift[prev] || {};
-    for (const empId in prevDay) {
-      const cell = prevDay[empId];
+  const candidates = [date, addDays(date, -1), addDays(date, -2)];
+  for (const origDate of candidates) {
+    if (!origDate) continue;
+    const day = state.shift[origDate] || {};
+    for (const empId in day) {
+      const cell = day[empId];
       if (cell.status !== STATUS.WORK) continue;
       const emp = state.employees.find(e => e.id === empId);
       if (!emp || !(emp.roles || []).includes(role)) continue;
-      total += splitShiftHours(cell).next;
+      const jst = campToJstShift(cell);
+      if (!jst) continue;
+      const effDate = addDays(origDate, jst.dateOffset);
+      if (!effDate) continue;
+      const split = splitShiftHours({ status: STATUS.WORK, start: jst.start, end: jst.end, breakMin: jst.breakMin });
+      if (effDate === date) total += split.day;
+      if (addDays(effDate, 1) === date) total += split.next;
     }
   }
   return total;
 }
 
-// Night専用: 22:00-05:00の深夜帯にクリップした実働時間。
-// 「その夜」の開始日(=シフトのstartがある日)に計上する(日跨ぎで前日/翌日に分割しない)。
-// 休憩は0時以降(帯域内なら)にあるものとして、帯域とオーバーラップする分だけ差し引く。
+// Night専用: JST 00:00-07:00の深夜帯にクリップした実働時間(ロールタグに関係なく全従業員が対象)。
+// ICT→JST変換後の日付・時刻を使って判定する(roleHoursForDateと同じ3日分の元データを走査)。
+// 休憩はJSTの当日0時以降で発生する前提とし、0時をまたいだ後ろ側から全額差し引く。
 function nightBandHoursForDate(date) {
-  // Nightの定義: ロールタグに関係なく、全従業員の実働時間のうち22:00-05:00に
-  // かかる分の総時間。日をまたぐシフトは「当日22-24時分」と「翌日0-5時分」に
-  // 分けて計上する(前者は休憩を引かない、後者は休憩を0時以降として全額差し引く)。
+  const BAND_START = 0;      // JST 00:00
+  const BAND_END = 7 * 60;   // JST 07:00
   let total = 0;
+  const candidates = [date, addDays(date, -1), addDays(date, -2)];
+  for (const origDate of candidates) {
+    if (!origDate) continue;
+    const day = state.shift[origDate] || {};
+    for (const empId in day) {
+      const cell = day[empId];
+      if (cell.status !== STATUS.WORK) continue;
+      const jst = campToJstShift(cell);
+      if (!jst) continue;
+      const effDate = addDays(origDate, jst.dateOffset);
+      if (!effDate) continue;
+      const s = timeToMin(jst.start);
+      let e = timeToMin(jst.end);
+      if (s == null || e == null) continue;
+      if (e <= s) e += 24 * 60; // JST側でさらに日を跨ぐ場合
+      const breakMin = jst.breakMin || 0;
 
-  // 1. 当日シフトの22:00-24:00分
-  const today = state.shift[date] || {};
-  for (const empId in today) {
-    const cell = today[empId];
-    if (cell.status !== STATUS.WORK) continue;
-    const s = timeToMin(cell.start);
-    let e = timeToMin(cell.end);
-    if (s == null || e == null) continue;
-    if (e <= s) e += 24 * 60; // overnight
-    const overlapStart = Math.max(s, 22 * 60);
-    const overlapEnd = Math.min(e, 24 * 60);
-    if (overlapEnd > overlapStart) total += (overlapEnd - overlapStart) / 60;
+      if (effDate === date) {
+        const overlapStart = Math.max(s, BAND_START);
+        const overlapEnd = Math.min(e, BAND_END);
+        if (overlapEnd > overlapStart) total += (overlapEnd - overlapStart) / 60;
+      }
+      if (addDays(effDate, 1) === date) {
+        const overlapEnd = Math.min(e, 24 * 60 + BAND_END);
+        if (overlapEnd > 24 * 60) {
+          total += Math.max(0, (overlapEnd - 24 * 60) - breakMin) / 60;
+        }
+      }
+    }
   }
-
-  // 2. 前日シフトが日をまたいで当日0:00-05:00に食い込む分
-  const prev = addDays(date, -1);
-  const prevDay = prev ? (state.shift[prev] || {}) : {};
-  for (const empId in prevDay) {
-    const cell = prevDay[empId];
-    if (cell.status !== STATUS.WORK) continue;
-    const s = timeToMin(cell.start);
-    let e = timeToMin(cell.end);
-    if (s == null || e == null) continue;
-    if (e <= s) e += 24 * 60; // overnight
-    if (e <= 24 * 60) continue; // 日をまたいでいない
-    const overlapEnd = Math.min(e, (24 + 5) * 60);
-    if (overlapEnd <= 24 * 60) continue;
-    const breakMin = cell.breakMin || 0;
-    total += Math.max(0, (overlapEnd - 24 * 60) - breakMin) / 60;
-  }
-
   return total;
 }
 
@@ -1351,7 +1365,7 @@ const SHIFT_SUMMARY_ROWS = [
   { label: 'Op(EN)計',           cls: 'role-op-en',    hours: date => roleHoursForDate(date, 'Op(EN)') },
   { label: 'Op計(2ロール合計)',   cls: 'role-optotal',  hours: date => roleHoursForDate(date, 'Op(JP/EN)') + roleHoursForDate(date, 'Op(EN)') },
   { label: 'JP+OP計(3ロール合計)', cls: 'role-jpoptotal', hours: date => roleHoursForDate(date, 'JP') + roleHoursForDate(date, 'Op(JP/EN)') + roleHoursForDate(date, 'Op(EN)') },
-  { label: 'Night計(22-05)',     cls: 'role-night',    hours: date => nightBandHoursForDate(date) },
+  { label: 'Night計(JST 00-07)', cls: 'role-night',    hours: date => nightBandHoursForDate(date) },
 ];
 
 function openCellEditor(date, empId) {
@@ -2428,6 +2442,7 @@ function exportRoleHoursCSV(startDate, endDate) {
   if (!dates.length) { toast('期間が不正です', 'error'); return; }
   const rows = [];
   rows.push([`ロール別稼働時間 ${startDate} 〜 ${endDate}`]);
+  rows.push(['※シフト表の入力時刻はICT(カンボジア時間)、この集計値はJST(日本時間)基準です']);
   rows.push(['ロール', ...dates.map(d => `${d}(${DOW_LABELS_EN[getDow(d)]})`), '期間合計']);
   for (const row of SHIFT_SUMMARY_ROWS) {
     const line = [row.label];
