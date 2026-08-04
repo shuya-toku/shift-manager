@@ -1287,10 +1287,17 @@ function campToJstShift(cell) {
   const e = eRaw + (crossesIct ? 24 * 60 : 0); // ICT基準のグロス終了(分)
   const duration = e - s;
   const jstStartClock = (s + 120) % (24 * 60);
-  const dateOffset = Math.floor((s + 120) / (24 * 60)); // 0 or 1: ICT開始時刻がJSTで翌日にずれるか
+  // 集計上の日付判定(業務ルール): ICT 04:00-21:59 スタートは当日扱い。
+  // ICT 22:00-翌03:59 スタートは前夜シフトの続き(深夜帯)とみなして翌日扱い(dateOffset=1)。
+  const dateOffset = (s >= 4 * 60 && s < 22 * 60) ? 0 : 1;
   const jstEndClock = (jstStartClock + duration) % (24 * 60);
   return { dateOffset, start: minToTime(jstStartClock), end: minToTime(jstEndClock), breakMin: cell.breakMin || 0 };
 }
+
+// JP計/Op計の運用ヘッドカウントから除外するマネジメント層(役職上JP/OPロールを兼任していても
+// 運用工数としてはカウントしない人)。Meng Zeang(021)のようにMgr兼任でも実質Op業務が中心の
+// メンバーは対象外(除外しない)。DE兼任者は別途ロールベースで一律除外している。
+const HEADCOUNT_EXCLUDED_IDS = ['008', '009', '027']; // Shuya, Mizuki, Ayumi
 
 // 指定ロールの、指定日(JST基準)における実働合計時間。
 // ICT→JST変換でシフトの開始日がICT側から見て±1日ずれることがあるため、対象日(date)に
@@ -1306,8 +1313,8 @@ function roleHoursForDate(date, role) {
       if (cell.status !== STATUS.WORK) continue;
       const emp = state.employees.find(e => e.id === empId);
       if (!emp || !(emp.roles || []).includes(role)) continue;
-      // JP/Op計はMgr・DE兼任者を除外する(Mgr兼任のJPスタッフ等は運用工数に含めない)
-      if ((emp.roles || []).includes('Mgr') || (emp.roles || []).includes('DE')) continue;
+      // JP/Op計はDE兼任者、および運用ヘッドカウントから除外するマネジメント層(HEADCOUNT_EXCLUDED_IDS)を除く
+      if ((emp.roles || []).includes('DE') || HEADCOUNT_EXCLUDED_IDS.includes(emp.id)) continue;
       const jst = campToJstShift(cell);
       if (!jst) continue;
       const effDate = addDays(origDate, jst.dateOffset);
