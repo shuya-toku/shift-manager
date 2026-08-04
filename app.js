@@ -1306,6 +1306,8 @@ function roleHoursForDate(date, role) {
       if (cell.status !== STATUS.WORK) continue;
       const emp = state.employees.find(e => e.id === empId);
       if (!emp || !(emp.roles || []).includes(role)) continue;
+      // JP/Op計はMgr・DE兼任者を除外する(Mgr兼任のJPスタッフ等は運用工数に含めない)
+      if ((emp.roles || []).includes('Mgr') || (emp.roles || []).includes('DE')) continue;
       const jst = campToJstShift(cell);
       if (!jst) continue;
       const effDate = addDays(origDate, jst.dateOffset);
