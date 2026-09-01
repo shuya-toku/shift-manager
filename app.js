@@ -1237,10 +1237,11 @@ function applyShiftStickyOffsets() {
   const wrap = document.getElementById('shift-table-wrap');
   const theadTr = wrap?.querySelector('thead tr');
   if (!theadTr) return;
-  let offset = theadTr.getBoundingClientRect().height;
+  let offset = Math.ceil(theadTr.getBoundingClientRect().height);
   if (!offset) return; // タブ非表示などで高さが取れない場合は諦める(タブ表示時に再計算される)
+  // 端数px(サブピクセル)の隙間から下の行がわずかに透けるのを防ぐため切り上げる
   wrap.querySelectorAll('tbody tr.row-role-summary').forEach(tr => {
-    const h = tr.getBoundingClientRect().height;
+    const h = Math.ceil(tr.getBoundingClientRect().height);
     Array.from(tr.children).forEach(td => { td.style.top = offset + 'px'; });
     offset += h;
   });
